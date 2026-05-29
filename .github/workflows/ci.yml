@@ -72,15 +72,17 @@ jobs:
       - name: Resolve Maven dependencies
         run: mvn dependency:resolve -B -q
 
+      - name: Setup Snyk CLI
+        uses: snyk/actions/setup@master
+
       - name: Run Snyk vulnerability scan
-        uses: snyk/actions/maven@master
+        run: |
+          snyk test \
+            --all-projects \
+            --severity-threshold=high \
+            --policy-path=.snyk
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        with:
-          args: >
-            --severity-threshold=high
-            --all-projects
-            --policy-path=.snyk
 
   deploy:
     name: Deploy & Validate
