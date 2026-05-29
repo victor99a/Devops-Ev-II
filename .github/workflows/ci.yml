@@ -55,6 +55,8 @@ jobs:
     name: Security Scan (Snyk)
     needs: build-and-test
     runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    continue-on-error: false
 
     steps:
       - name: Checkout
@@ -62,7 +64,6 @@ jobs:
 
       - name: Run Snyk vulnerability scan
         uses: snyk/actions/maven@master
-        continue-on-error: false
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
@@ -73,7 +74,7 @@ jobs:
 
   deploy:
     name: Deploy & Validate
-    needs: security
+    needs: build-and-test
     runs-on: ubuntu-latest
     if: github.event_name != 'pull_request'
 
