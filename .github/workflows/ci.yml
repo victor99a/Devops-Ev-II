@@ -72,8 +72,8 @@ jobs:
       - name: Resolve Maven dependencies
         run: mvn dependency:resolve -B -q
 
-      - name: Setup Snyk CLI
-        uses: snyk/actions/setup@master
+      - name: Install Snyk CLI via NPM
+        run: npm install -g snyk
 
       - name: Run Snyk vulnerability scan
         run: |
