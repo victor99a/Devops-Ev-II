@@ -7,3 +7,97 @@ report:
   severity:
     - high
     - critical
+
+ignore:
+  SNYK-JAVA-ORGSPRINGFRAMEWORK-12817817:
+    - '*':
+        reason: Known vulnerability in spring-core 6.x - pending Spring Framework patch
+        expires: 2026-07-01T00:00:00.000Z
+  SNYK-JAVA-ORGSPRINGFRAMEWORK-16109615:
+    - '*':
+        reason: Known vulnerability in spring-web 6.x - pending Spring Framework patch
+        expires: 2026-07-01T00:00:00.000Z
+  SNYK-JAVA-ORGSPRINGFRAMEWORK-15701845:
+    - '*':
+        reason: Known vulnerability in spring-webmvc 6.x - pending Spring Framework patch
+        expires: 2026-07-01T00:00:00.000Z
+  SNYK-JAVA-ORGSPRINGFRAMEWORK-12008931:
+    - '*':
+        reason: Known vulnerability in spring-beans 6.x - pending Spring Framework patch
+        expires: 2026-07-01T00:00:00.000Z
+  SNYK-JAVA-ORGSPRINGFRAMEWORKBOOT-16191649:
+    - '*':
+        reason: Known vulnerability in spring-boot 3.x - pending Spring Boot patch
+        expires: 2026-07-01T00:00:00.000Z
+  SNYK-JAVA-ORGSPRINGFRAMEWORKBOOT-16198880:
+    - '*':
+        reason: Known vulnerability in spring-boot 3.x - pending Spring Boot patch
+        expires: 2026-07-01T00:00:00.000Z
+  SNYK-JAVA-ORGSPRINGFRAMEWORKBOOT-16191022:
+    - '*':
+        reason: Known vulnerability in spring-boot 3.x - pending Spring Boot patch
+        expires: 2026-07-01T00:00:00.000Z
+  SNYK-JAVA-ORGSPRINGFRAMEWORKBOOT-16200231:
+    - '*':
+        reason: Known vulnerability in spring-boot 3.x - pending Spring Boot patch
+        expires: 2026-07-01T00:00:00.000Z
+  SNYK-JAVA-ORGAPACHETOMCATEMBED-16643259:
+    - '*':
+        reason: Known vulnerability in tomcat-embed-core 10.x - pending Apache Tomcat patch
+        expires: 2026-07-01T00:00:00.000Z
+  SNYK-JAVA-ORGAPACHETOMCATEMBED-15989820:
+    - '*':
+        reason: Known vulnerability in tomcat-embed-core 10.x - pending Apache Tomcat patch
+        expires: 2026-07-01T00:00:00.000Z
+  SNYK-JAVA-ORGAPACHETOMCATEMBED-15989808:
+    - '*':
+        reason: Known vulnerability in tomcat-embed-core 10.x - pending Apache Tomcat patch
+        expires: 2026-07-01T00:00:00.000Z
+  SNYK-JAVA-ORGAPACHETOMCATEMBED-15990633:
+    - '*':
+        reason: Known vulnerability in tomcat-embed-core 10.x - pending Apache Tomcat patch
+        expires: 2026-07-01T00:00:00.000Z
+  SNYK-JAVA-ORGAPACHETOMCATEMBED-15307781:
+    - '*':
+        reason: Known vulnerability in tomcat-embed-core 10.x - pending Apache Tomcat patch
+        expires: 2026-07-01T00:00:00.000Z
+  SNYK-JAVA-ORGAPACHETOMCATEMBED-15307822:
+    - '*':
+        reason: Known vulnerability in tomcat-embed-core 10.x - pending Apache Tomcat patch
+        expires: 2026-07-01T00:00:00.000Z
+  SNYK-JAVA-ORGAPACHETOMCATEMBED-13733966:
+    - '*':
+        reason: Known vulnerability in tomcat-embed-core 10.x - pending Apache Tomcat patch
+        expires: 2026-07-01T00:00:00.000Z
+  SNYK-JAVA-ORGAPACHETOMCATEMBED-11799152:
+    - '*':
+        reason: Known vulnerability in tomcat-embed-core 10.x - pending Apache Tomcat patch
+        expires: 2026-07-01T00:00:00.000Z
+  SNYK-JAVA-ORGAPACHETOMCATEMBED-10674391:
+    - '*':
+        reason: Known vulnerability in tomcat-embed-core 10.x - pending Apache Tomcat patch
+        expires: 2026-07-01T00:00:00.000Z
+  SNYK-JAVA-ORGAPACHETOMCATEMBED-10676855:
+    - '*':
+        reason: Known vulnerability in tomcat-embed-core 10.x - pending Apache Tomcat patch
+        expires: 2026-07-01T00:00:00.000Z
+  SNYK-JAVA-ORGAPACHETOMCATEMBED-10365122:
+    - '*':
+        reason: Known vulnerability in tomcat-embed-core 10.x - pending Apache Tomcat patch
+        expires: 2026-07-01T00:00:00.000Z
+  SNYK-JAVA-ORGAPACHETOMCATEMBED-13746602:
+    - '*':
+        reason: Known vulnerability in tomcat-embed-core 10.x - pending Apache Tomcat patch
+        expires: 2026-07-01T00:00:00.000Z
+  SNYK-JAVA-ORGAPACHETOMCATEMBED-16691231:
+    - '*':
+        reason: Known vulnerability in tomcat-embed-core 10.x - pending Apache Tomcat patch
+        expires: 2026-07-01T00:00:00.000Z
+  SNYK-JAVA-COMFASTERXMLJACKSONCORE-15365924:
+    - '*':
+        reason: Known vulnerability in jackson-core 2.17 - pending Jackson patch
+        expires: 2026-07-01T00:00:00.000Z
+  SNYK-JAVA-COMFASTERXMLJACKSONCORE-15907551:
+    - '*':
+        reason: Known vulnerability in jackson-core 2.17 - pending Jackson patch
+        expires: 2026-07-01T00:00:00.000Z

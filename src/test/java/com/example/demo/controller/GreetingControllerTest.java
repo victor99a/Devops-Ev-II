@@ -76,4 +76,19 @@ class GreetingControllerTest {
                     .andExpect(jsonPath("$.message").exists());
         }
     }
+
+    @Nested
+    @DisplayName("GET /api/v1/health")
+    class GetHealth {
+
+        @Test
+        @DisplayName("returns 200 with status UP")
+        void shouldReturnStatusUp() throws Exception {
+            mockMvc.perform(get("/api/v1/health")
+                            .accept(MediaType.APPLICATION_JSON))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value("UP"))
+                    .andExpect(jsonPath("$.timestamp").exists());
+        }
+    }
 }

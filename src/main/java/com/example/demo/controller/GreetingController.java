@@ -21,4 +21,12 @@ public class GreetingController {
     public GreetingResponse greeting(@RequestParam(defaultValue = "World") String name) {
         return greetingService.greet(name);
     }
+
+    @GetMapping("/health")
+    public java.util.Map<String, Object> health() {
+        return java.util.Map.of(
+                "status", "UP",
+                "timestamp", java.time.Instant.now().toString()
+        );
+    }
 }

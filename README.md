@@ -120,7 +120,7 @@ La politica `.snyk` excluye directorios de build (`target/`) y reporta solo seve
 |---|---|---|
 | `GET` | `/api/v1/greeting` | Saludo con nombre por defecto "World" |
 | `GET` | `/api/v1/greeting?name=DevOps` | Saludo personalizado |
-| `GET` | `/actuator/health` | Health check de Spring Boot Actuator |
+| `GET` | `/api/v1/health` | Health check del microservicio (status: UP) |
 
 Ejemplo de respuesta:
 
@@ -145,7 +145,7 @@ docker compose up -d
 
 # Probar
 curl http://localhost:8080/api/v1/greeting?name=Duoc
-curl http://localhost:8080/actuator/health
+curl http://localhost:8080/api/v1/health
 
 # Detener
 docker compose down
