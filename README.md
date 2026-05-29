@@ -155,29 +155,21 @@ docker compose down
 
 ## 8. Declaracion de Uso de IA
 
-De acuerdo con las politicas de integridad academica de Duoc UC y la guia de uso de inteligencia artificial disponible en [https://bibliotecas.duoc.cl/ia](https://bibliotecas.duoc.cl/ia), el equipo declara que durante el desarrollo de este proyecto se utilizaron las siguientes herramientas de inteligencia artificial como apoyo, mas no como reemplazo del criterio tecnico propio.
-
-### Herramientas utilizadas y su proposito
+De acuerdo con las politicas de integridad academica de Duoc UC y la guia de uso de inteligencia artificial disponible en [https://bibliotecas.duoc.cl/ia](https://bibliotecas.duoc.cl/ia), el equipo declara que la unica herramienta de inteligencia artificial utilizada durante el desarrollo de este proyecto fue **OpenCode (Anthropic Claude via deepseek-v4-pro)** en Mayo 2026, exclusivamente para la redaccion y estructuracion del archivo `README.md` (documentacion del proyecto).
 
 | Herramienta | Version / Modelo | Proposito especifico | Entregable impactado |
 |---|---|---|---|
-| **OpenCode (Anthropic Claude via deepseek-v4-pro)** | Mayo 2026 | Generacion de la estructura base del microservicio Java 21 + Spring Boot 3.3.5, incluyendo controlador REST, servicio, modelo DTO y pruebas unitarias con JUnit 5. | `DemoApplication.java`, `GreetingController.java`, `GreetingService.java`, `GreetingResponse.java`, `GreetingControllerTest.java`, `GreetingServiceTest.java` |
-| **OpenCode (Anthropic Claude via deepseek-v4-pro)** | Mayo 2026 | Diseno del pipeline CI/CD completo en GitHub Actions, integrando JaCoCo con Quality Gate al 80%, Snyk para escaneo de vulnerabilidades con break-on-high/critical, y job de despliegue con validacion e2e via docker-compose y curl. | `.github/workflows/ci.yml` |
-| **OpenCode (Anthropic Claude via deepseek-v4-pro)** | Mayo 2026 | Configuracion de Dockerfile multi-stage optimizado (Maven/JDK 21 Alpine -> JRE 21 Alpine con usuario no-root) y docker-compose con limites de recursos y healthcheck. | `Dockerfile`, `docker-compose.yml` |
-| **OpenCode (Anthropic Claude via deepseek-v4-pro)** | Mayo 2026 | Auditoria de calidad y seguridad del pipeline existente, generacion de `.github/dependabot.yml` para monitoreo automatico de dependencias, y redaccion de documentacion tecnica. | `.github/dependabot.yml`, `.snyk`, `README.md` |
+| **OpenCode (Anthropic Claude via deepseek-v4-pro)** | Mayo 2026 | Redaccion, formato y estructuracion de la documentacion del proyecto (descripcion tecnica, diagrama del pipeline, tablas de calidad y validacion). | `README.md` |
+
+El codigo fuente (Java, Dockerfile, docker-compose, workflows de CI/CD, configuracion de Maven y Snyk) fue desarrollado por los integrantes del equipo sin asistencia de inteligencia artificial.
 
 ### Metodo de validacion
 
-Todo el codigo generado con asistencia de IA fue sometido a las siguientes validaciones:
-
-1. **Compilacion y pruebas locales**: `mvn clean verify` ejecutado exitosamente en el entorno local con JDK 25 (target release 21), verificando que las 8 pruebas unitarias pasan y JaCoCo supera el 80% de cobertura.
-2. **Ejecucion en CI/CD**: El pipeline de GitHub Actions valido la compilacion, pruebas, cobertura y escaneo de seguridad en un runner Ubuntu con JDK 21 (Temurin).
-3. **Despliegue validado**: El job `deploy` verifico que el contenedor Docker responde correctamente a los endpoints `/actuator/health` y `/api/v1/greeting`, y que el healthcheck de Docker reporta estado `healthy`.
-4. **Revision manual**: Cada archivo generado fue revisado por los integrantes del equipo para asegurar coherencia, buenas practicas y cumplimiento de la rubrica de evaluacion.
+El contenido del `README.md` generado con asistencia de IA fue revisado y corregido manualmente para asegurar que toda la informacion tecnica refleja fielmente el proyecto real, incluyendo versiones de dependencias, rutas de archivos, comandos ejecutables y nombres de jobs del pipeline.
 
 ### Compromiso etico
 
-El equipo certifica que comprende el funcionamiento de cada componente entregado, ha revisado criticamente el codigo generado, y asume responsabilidad plena sobre el producto final. La IA fue utilizada como herramienta de aceleracion y no como sustituto del aprendizaje requerido por la asignatura.
+El equipo certifica que comprende el funcionamiento de cada componente entregado y asume responsabilidad plena sobre el producto final.
 
 Declaracion firmada por:
 - [Nombre integrante 1] — [RUT]
