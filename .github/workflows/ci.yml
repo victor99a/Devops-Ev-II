@@ -62,6 +62,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+          cache: maven
+
+      - name: Resolve Maven dependencies
+        run: mvn dependency:resolve -B -q
+
       - name: Run Snyk vulnerability scan
         uses: snyk/actions/maven@master
         env:
