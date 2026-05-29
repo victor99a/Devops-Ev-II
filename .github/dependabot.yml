@@ -1,0 +1,32 @@
+version: 2
+updates:
+
+  - package-ecosystem: "maven"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Santiago"
+    labels:
+      - "dependencies"
+      - "maven"
+    commit-message:
+      prefix: "deps(maven)"
+    open-pull-requests-limit: 10
+    target-branch: "main"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Santiago"
+    labels:
+      - "dependencies"
+      - "ci/cd"
+    commit-message:
+      prefix: "deps(actions)"
+    open-pull-requests-limit: 5
+    target-branch: "main"
