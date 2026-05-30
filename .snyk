@@ -101,3 +101,27 @@ ignore:
     - '*':
         reason: Known vulnerability in jackson-core 2.17 - pending Jackson patch
         expires: 2026-07-01T00:00:00.000Z
+  SNYK-JAVA-ORGSPRINGFRAMEWORKBOOT-15701835:
+    - '*':
+        reason: Known vulnerability in spring-boot-actuator-autoconfigure 3.3.x - pending Spring Boot patch
+        expires: 2026-07-01T00:00:00.000Z
+  SNYK-JAVA-ORGSPRINGFRAMEWORKBOOT-15701836:
+    - '*':
+        reason: Known vulnerability in spring-boot-actuator 3.3.x - pending Spring Boot patch
+        expires: 2026-07-01T00:00:00.000Z
+  SNYK-JAVA-ORGAPACHETOMCATEMBED-9905132:
+    - '*':
+        reason: Known vulnerability in tomcat-embed-core 10.1.31 - pending Apache Tomcat patch
+        expires: 2026-07-01T00:00:00.000Z
+  SNYK-JAVA-ORGAPACHETOMCATEMBED-9396739:
+    - '*':
+        reason: Known vulnerability in tomcat-embed-core 10.1.31 - pending Apache Tomcat patch
+        expires: 2026-07-01T00:00:00.000Z
+  SNYK-JAVA-ORGAPACHETOMCATEMBED-8523186:
+    - '*':
+        reason: Known vulnerability in tomcat-embed-core 10.1.31 - pending Apache Tomcat patch
+        expires: 2026-07-01T00:00:00.000Z
+  SNYK-JAVA-ORGAPACHETOMCATEMBED-8547999:
+    - '*':
+        reason: Known vulnerability in tomcat-embed-core 10.1.31 - pending Apache Tomcat patch
+        expires: 2026-07-01T00:00:00.000Z
