@@ -202,17 +202,17 @@ Declaracion firmada por:
 >
 > ---
 >
-> ### Integrante 2: [Nombre completo]
->
-> **Reflexion sobre CI/CD:**
-> _(Idem.)_
->
-> **Reflexion sobre calidad y seguridad:**
-> _(Idem.)_
->
-> **Lecciones aprendidas:**
-> _(Idem.)_
+> ### Integrante 2: Eliezer Carrasco — RUT: 18.330.707-k
 
+**Reflexión sobre CI/CD:**
+A través de la implementación de este pipeline en GitHub Actions para una arquitectura basada en Spring Boot, comprendí que la Integración Continua (CI) va mucho más allá de automatizar una compilación. Su valor real radica en establecer un mecanismo de retroalimentación inmediata para el equipo de desarrollo. Al configurar disparadores automáticos ante eventos de push y pull request en la rama principal, el pipeline actúa como un guardián de la integridad del software. Automatizar fases críticas como la compilación con Maven y el empaquetado final nos permite transicionar con total confianza desde el código fuente hasta un artefacto Docker ejecutable, erradicando por completo el clásico problema de "en mi máquina sí funciona" y garantizando que cada entrega cumpla con un estándar predecible y repetible.
+
+**Reflexión sobre calidad y seguridad:**
+La incorporación de herramientas como JaCoCo y Snyk transforma radicalmente la forma en que concebimos la calidad y la seguridad dentro del ciclo de vida del desarrollo de software (DevSecOps). La métrica de cobertura provista por JaCoCo establece un umbral numérico objetivo (Quality Gate >= 80%) que nos obliga a diseñar pruebas unitarias y de integración significativas con JUnit 5, impidiendo el avance de código no validado funcionalmente. Por otra parte, la integración de Snyk añade una capa indispensable de seguridad en la cadena de suministro de software; al analizar estáticamente el `pom.xml` y las dependencias de Maven en busca de vulnerabilidades antes del despliegue, mitigamos riesgos de seguridad críticos de manera proactiva. Definir políticas severas que aborten la construcción ante hallazgos de severidad "High" o "Critical" asegura la gobernanza del proyecto y blinda el entorno productivo simulado.
+
+**Lecciones aprendidas:**
+1. **La criticidad de la gobernanza de contenedores:** Aprendí la importancia de configurar explícitamente límites de recursos físicos (CPU y Memoria RAM) mediante Docker Compose, garantizando que el microservicio no genere denegaciones de servicio locales ni costes excesivos en un ecosistema cloud real debido a fugas de memoria o hilos huérfanos.
+2. **Estrategias Multi-stage para optimización:** Comprendí las ventajas arquitectónicas de separar el entorno de compilación (JDK y Maven) del entorno de ejecución (JRE Alpine ligero con usuario no-root). Esto no solo optimiza drásticamente el peso de la imagen final del contenedor, sino que reduce sustancialmente la superficie de ataque expuesta ante posibles intrusiones.
 ---
 
 ## 10. Licencia
