@@ -99,3 +99,19 @@ jobs:
       - name: Tear down
         if: always()
         run: docker compose down -v
+
+  sync-local:
+    name: Sync & Redeploy Local
+    needs: deploy
+    if: github.event_name != 'pull_request'
+    runs-on: self-hosted
+    steps:
+      - name: Pull latest from main
+        run: |
+          cd $HOME/Devops/demo-ms
+          git pull origin main
+
+      - name: Redeploy with Docker Compose
+        run: |
+          cd $HOME/Devops/demo-ms
+          docker compose up -d --build

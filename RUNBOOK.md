@@ -76,26 +76,53 @@ Ejemplo con variables custom:
 DB_HOST=192.168.1.100 DB_NAME=produccion java -jar target/demo-ms-1.0.0.jar
 ```
 
-## Flujo demo: cambio de mensaje + pipeline end-to-end
+## Setup: Self-Hosted Runner (auto-sync con CI)
 
-Para demostrar que el pipeline funciona de punta a punta, se modifica el string del saludo
-y se observa como el pipeline valida el cambio y actualiza el despliegue local automaticamente.
+Esto configura tu laptop como runner de GitHub Actions. Cuando el pipeline termina,
+el job `sync-local` ejecuta `git pull` y `docker compose up -d --build` EN TU MAQUINA.
 
-### Paso 1 — Levantar servicios y el sync
+### Instalacion (una sola vez)
+
+1. Ve a **Settings → Actions → Runners → New self-hosted runner**
+2. Elige macOS, sigue las instrucciones (descargar + configurar + `./run.sh`)
+3. Inicia el runner como servicio:
+   ```bash
+   cd ~/actions-runner
+   ./svc.sh install && ./svc.sh start
+   ```
+4. Verifica que aparece como "Idle" en Settings → Actions → Runners
+
+El job `sync-local` en el pipeline usa `runs-on: self-hosted` y ejecuta:
+
+```yaml
+- name: Pull latest from main
+  run: cd $HOME/Devops/demo-ms && git pull origin main
+
+- name: Redeploy with Docker Compose
+  run: cd $HOME/Devops/demo-ms && docker compose up -d --build
+```
+
+## Alternativa sin runner: sync.sh por polling
+
+Si no quieres configurar el self-hosted runner, usa el script de polling:
 
 ```bash
-# Terminal 1: levantar Docker Compose
-docker compose up -d --build
+./sync.sh   # monitorea origin/main cada 10s, hace git pull + redeploy al detectar cambios
+```
 
-# Terminal 2: iniciar el monitor de cambios (auto-pull + redeploy)
-./sync.sh
+## Flujo demo: cambio de mensaje + pipeline end-to-end
+
+### Paso 1 — Levantar servicios
+
+```bash
+docker compose up -d --build
 ```
 
 ### Paso 2 — Ver el mensaje actual
 
 ```bash
 curl -s -X POST "http://localhost:8080/api/v1/greetings?name=Demo" | python3 -m json.tool
-# Respuesta: "message": "Hello devops V4, Demo!"
+# "message": "Hello devops V4, Demo!"
 ```
 
 ### Paso 3 — Modificar el mensaje
@@ -118,14 +145,16 @@ git commit -m "feat: cambiar mensaje de greeting a V5"
 git push
 ```
 
-### Paso 5 — Observar
+### Paso 5 — Pipeline se ejecuta, local se actualiza solo
 
-- El pipeline se ejecuta en GitHub Actions (build → test → Snyk → deploy)
-- Al terminar, la terminal con `./sync.sh` detecta el nuevo commit
-- Hace `git pull` + `docker compose up -d --build` automaticamente
-- Al volver a probar el endpoint, el mensaje ya refleja el cambio
+- Pipeline en GitHub Actions: `build → security → deploy → sync-local`
+- El job `sync-local` corre en tu **self-hosted runner** (tu laptop)
+- Ejecuta `git pull` + `docker compose up -d --build` automaticamente
+- O si usas `./sync.sh`, detecta el commit nuevo y redeploya
+
+### Paso 6 — Verificar el cambio
 
 ```bash
 curl -s -X POST "http://localhost:8080/api/v1/greetings?name=Demo" | python3 -m json.tool
-# Respuesta: "message": "Hola mundo V5, Demo!"
+# "message": "Hola mundo V5, Demo!"
 ```
