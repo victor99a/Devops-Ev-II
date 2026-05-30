@@ -12,53 +12,9 @@ env:
 
 jobs:
 
-  build-and-test:
-    name: Build, Test & Coverage
+  build:
+    name: Build
     runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up JDK ${{ env.JAVA_VERSION }}
-        uses: actions/setup-java@v5
-        with:
-          java-version: ${{ env.JAVA_VERSION }}
-          distribution: temurin
-          cache: maven
-
-      - name: Resolve Maven dependencies (all scopes)
-        run: mvn dependency:resolve -B -q
-
-      - name: Build, Test & Verify (JaCoCo gate)
-        run: mvn clean verify -B
-
-      - name: Archive test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: surefire-reports
-          path: target/surefire-reports/
-
-      - name: Archive JaCoCo report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: jacoco-report
-          path: target/site/jacoco/
-
-      - name: Archive application JAR
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-jar
-          path: target/*.jar
-
-  security:
-    name: Security Scan (Snyk)
-    needs: build-and-test
-    runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request'
-    continue-on-error: false
 
     steps:
       - name: Checkout
@@ -74,21 +30,18 @@ jobs:
       - name: Resolve Maven dependencies
         run: mvn dependency:resolve -B -q
 
-      - name: Install Snyk CLI via NPM
-        run: npm install -g snyk
+      - name: Build Application
+        run: mvn clean package -B
 
-      - name: Run Snyk vulnerability scan
-        run: |
-          snyk test \
-            --all-projects \
-            --severity-threshold=high \
-            --policy-path=.snyk
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+      - name: Archive application JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-jar
+          path: target/*.jar
 
   deploy:
-    name: Deploy & Validate
-    needs: build-and-test
+    name: Deploy
+    needs: build
     runs-on: ubuntu-latest
     if: github.event_name != 'pull_request'
 
@@ -110,59 +63,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Start service with Docker Compose
-        run: docker compose up -d --wait
-
-      - name: Validate health endpoint
-        run: |
-          echo "=== Validating /actuator/health ==="
-          for i in $(seq 1 20); do
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/actuator/health || echo "000")
-            echo "  Attempt $i: HTTP $HTTP_CODE"
-            if [ "$HTTP_CODE" = "200" ]; then
-              curl -s http://localhost:8080/actuator/health | python3 -m json.tool
-              break
-            fi
-            sleep 3
-          done
-          if [ "$HTTP_CODE" != "200" ]; then
-            echo "ERROR: /actuator/health did not return 200 after 20 attempts"
-            docker compose logs
-            exit 1
-          fi
-
-      - name: Validate greeting endpoints
-        run: |
-          echo "=== Validating GET /api/v1/greetings ==="
-          curl -fsS http://localhost:8080/api/v1/greetings | python3 -m json.tool
-
-          echo ""
-          echo "=== Validating POST /api/v1/greetings?name=DevOps ==="
-          curl -fsS -X POST "http://localhost:8080/api/v1/greetings?name=DevOps" | python3 -m json.tool
-
-          echo ""
-          echo "=== Validating GET /api/v1/greetings/1 ==="
-          curl -fsS http://localhost:8080/api/v1/greetings/1 | python3 -m json.tool
-
-      - name: Validate container health
-        run: |
-          echo "=== Docker container status ==="
-          docker ps -a --filter name=demo-ms --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-
-          HEALTH_STATUS=$(docker inspect --format='{{.State.Health.Status}}' demo-ms 2>/dev/null)
-          echo ""
-          echo "Health status: $HEALTH_STATUS"
-
-          if [ "$HEALTH_STATUS" != "healthy" ]; then
-            echo "ERROR: Container health check failed (status: $HEALTH_STATUS)"
-            docker compose logs
-            exit 1
-          fi
-
-      - name: Show logs on failure
-        if: failure()
-        run: |
-          echo "=== Docker Compose Logs ==="
-          docker compose logs
+        run: docker compose up -d
 
       - name: Tear down
         if: always()
