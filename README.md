@@ -1,6 +1,6 @@
 # demo-ms — Microservicio Base para Evaluacion de CI/CD
 
-Microservicio REST desarrollado en **Java 21** con **Spring Boot 3.3.5**, contenerizado con Docker multi-stage y orquestado via GitHub Actions con pipeline completo de CI/CD que incluye calidad de codigo, escaneo de seguridad y despliegue automatizado validado.
+Microservicio REST con **Arquitectura Hexagonal (Puertos y Adaptadores)** desarrollado en **Java 17** con **Spring Boot 3.3.5**, persistencia en **PostgreSQL 15**, contenerizado con Docker multi-stage y orquestado via GitHub Actions con pipeline completo de CI/CD que incluye calidad de codigo, escaneo de seguridad y despliegue automatizado validado.
 
 ---
 
@@ -9,22 +9,52 @@ Microservicio REST desarrollado en **Java 21** con **Spring Boot 3.3.5**, conten
 ```
 demo-ms/
 ├── .github/
-│   ├── workflows/ci.yml          # Pipeline CI/CD (GitHub Actions)
-│   └── dependabot.yml            # Actualizacion automatica de dependencias
-├── .snyk                         # Politica de exclusion de Snyk
-├── Dockerfile                    # Multi-stage: build (Maven/JDK 21) + run (JRE Alpine)
-├── docker-compose.yml            # Orquestacion local con limites de recursos
-├── pom.xml                       # Maven + Spring Boot 3.3.5 + JaCoCo + Surefire
+│   ├── workflows/ci.yml              # Pipeline CI/CD (GitHub Actions)
+│   └── dependabot.yml                # Actualizacion automatica de dependencias
+├── .snyk                             # Politica de exclusion de Snyk
+├── Dockerfile                        # Multi-stage: build (Maven/JDK 21) + run (JRE Alpine + curl)
+├── docker-compose.yml                # Orquestacion local: app + db (PostgreSQL 15)
+├── pom.xml                           # Maven + Spring Boot 3.3.5 + JPA + PostgreSQL + JaCoCo
 ├── src/main/java/com/example/demo/
-│   ├── DemoApplication.java      # Entry point
-│   ├── controller/GreetingController.java   # GET /api/v1/greeting
-│   ├── service/GreetingService.java         # Logica de negocio
-│   └── model/GreetingResponse.java          # Record DTO
-├── src/main/resources/application.yml
+│   ├── DemoApplication.java          # Entry point
+│   ├── domain/
+│   │   ├── model/
+│   │   │   └── Greeting.java         # Entidad de dominio pura (record, sin anotaciones)
+│   │   └── port/
+│   │       ├── inbound/
+│   │       │   ├── CreateGreetingUseCase.java   # Puerto: crear saludo
+│   │       │   └── LifecycleUseCase.java        # Puerto: listar/buscar saludos
+│   │       └── outbound/
+│   │           └── GreetingRepositoryPort.java  # Puerto: contrato de persistencia
+│   ├── application/
+│   │   └── service/
+│   │       └── GreetingServiceImpl.java         # Implementacion de casos de uso (sin dependencias JPA)
+│   └── infrastructure/
+│       ├── inbound/
+│       │   └── controller/
+│       │       └── GreetingController.java      # Adaptador REST (3 endpoints)
+│       └── outbound/
+│           └── database/
+│               ├── GreetingEntity.java          # Entidad JPA (solo infraestructura)
+│               ├── SpringGreetingRepository.java # Interfaz Spring Data JPA
+│               └── GreetingRepositoryAdapter.java # Adaptador: implementa GreetingRepositoryPort
+├── src/main/resources/
+│   └── application.yml                # Configuracion PostgreSQL + Actuator
 └── src/test/java/com/example/demo/
-    ├── controller/GreetingControllerTest.java  # @WebMvcTest + MockMvc (3 tests)
-    └── service/GreetingServiceTest.java        # Unit tests puros (5 tests)
+    ├── application/service/
+    │   └── GreetingServiceImplTest.java             # Unit test (Mockito, 8 tests)
+    ├── infrastructure/inbound/controller/
+    │   └── GreetingControllerTest.java              # @WebMvcTest + MockMvc (6 tests)
+    └── infrastructure/outbound/database/
+        └── GreetingRepositoryAdapterTest.java       # Unit test (Mockito, 5 tests)
 ```
+
+### Principios de Arquitectura Hexagonal
+
+- **Dependencias apuntan hacia adentro**: `infrastructure → application → domain`
+- **El dominio no conoce frameworks**: ni Spring, ni JPA, ni anotaciones externas
+- **Puertos (interfaces)** en el dominio definen contratos; **Adaptadores** en infraestructura los implementan
+- **Mapping** entre entidad de dominio (`Greeting`) y entidad JPA (`GreetingEntity`) ocurre exclusivamente en el adaptador de salida
 
 ---
 
@@ -35,7 +65,7 @@ demo-ms/
                         │
                  ┌──────▼──────┐
                  │ Build, Test │  mvn clean verify
-                 │  & Coverage │  JUnit 5 (8 tests)
+                 │  & Coverage │  JUnit 5 (19 tests)
                  │   (JaCoCo)  │  JaCoCo gate >= 80%
                  └──────┬──────┘
                         │
@@ -48,7 +78,7 @@ demo-ms/
                  ┌──────▼──────┐
                  │  Deploy &   │  docker compose up -d
                  │  Validate   │  curl /actuator/health
-                 │             │  curl /api/v1/greeting
+                 │             │  curl /api/v1/greetings
                  │             │  docker inspect (health status)
                  │             │  docker compose down
                  └─────────────┘
@@ -60,15 +90,15 @@ demo-ms/
 |---|---|---|---|
 | **Build & Test** | Maven, JUnit 5, JaCoCo | `surefire-reports`, `jacoco-report`, JAR | Quality Gate 80% line coverage |
 | **Security** | Snyk | Reporte de vulnerabilidades en consola | Falla si encuentra High o Critical |
-| **Deploy** | Docker Compose, curl | `docker build` cache | HTTP 200 en `/actuator/health` y `/api/v1/greeting` + `docker inspect` healthy |
+| **Deploy** | Docker Compose, curl | `docker build` cache | HTTP 200 en `/actuator/health` y `/api/v1/greetings` + `docker inspect` healthy |
 | **Dependabot** | GitHub Dependabot | PRs automaticas semanales | Maven + GitHub Actions |
 
 ### Reglas de calidad (Quality Gates)
 
-- **JaCoCo**: `mvn verify` falla si la cobertura de lineas es menor a **80%**
+- **JaCoCo**: `mvn verify` falla si la cobertura de lineas es menor a **80%** (excluye `DemoApplication`, `domain/model/*`, `GreetingEntity` y `SpringGreetingRepository` por ser boilerplate)
 - **Snyk**: el pipeline falla si se detecta al menos una vulnerabilidad de severidad **High** o **Critical**
-- **JUnit**: 8 pruebas que validan controlador (MockMvc) y servicio (tests puros)
-- **Endpoint validation**: curl con reintentos cada 3s (hasta 20 intentos) + healthcheck de Docker
+- **JUnit**: 19 pruebas que validan controlador (MockMvc), servicio (unit tests puros) y adaptador (mapping)
+- **Endpoint validation**: curl con reintentos + healthcheck de Docker
 
 ---
 
@@ -79,17 +109,45 @@ demo-ms/
 | Etapa | Imagen | Proposito |
 |---|---|---|
 | `build` | `maven:3.9-eclipse-temurin-21-alpine` | Compilar JAR |
-| `run` | `eclipse-temurin:21-jre-alpine` | Ejecutar con usuario no-root (`appuser`) |
+| `run` | `eclipse-temurin:21-jre-alpine` | Ejecutar con usuario no-root (`appuser`) + curl |
+
+- **HEALTHCHECK** usa `curl` contra `/actuator/health` en puerto 8080 (intervalo 30s, timeout 5s, 3 reintentos)
+- Usuario no-root (`appuser`) por seguridad
 
 ### docker-compose.yml
 
-- `restart: unless-stopped`
-- Limites: CPU 1.0 / Mem 512M (reservas: 0.5 CPU / 256M)
-- Healthcheck via `wget` contra `/actuator/health`
+```yaml
+services:
+  db:             # PostgreSQL 15 Alpine
+    healthcheck:  # pg_isready
+    restart: unless-stopped
+
+  app:            # demo-ms
+    depends_on: db (condition: service_healthy)
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:   { cpus: 1.0, memory: 512M }
+        reservations: { cpus: 0.5, memory: 256M }
+```
 
 ---
 
-## 4. Monitoreo de Dependencias
+## 4. Base de Datos
+
+| Variable | Default | Descripcion |
+|---|---|---|
+| `DB_HOST` | `localhost` | Host de PostgreSQL |
+| `DB_PORT` | `5432` | Puerto de PostgreSQL |
+| `DB_NAME` | `demo` | Nombre de la base de datos |
+| `DB_USER` | `postgres` | Usuario de PostgreSQL |
+| `DB_PASS` | `postgres` | Password de PostgreSQL |
+
+Spring Boot JPA usa `ddl-auto: update` para crear/actualizar automaticamente la tabla `greetings`.
+
+---
+
+## 5. Monitoreo de Dependencias
 
 El archivo `.github/dependabot.yml` configura actualizaciones semanales (lunes 09:00 America/Santiago):
 
@@ -98,7 +156,7 @@ El archivo `.github/dependabot.yml` configura actualizaciones semanales (lunes 0
 
 ---
 
-## 5. Configuracion de Seguridad (IE3)
+## 6. Configuracion de Seguridad (IE3)
 
 ### Snyk
 
@@ -114,38 +172,42 @@ La politica `.snyk` excluye directorios de build (`target/`) y reporta solo seve
 
 ---
 
-## 6. Endpoints
+## 7. Endpoints
 
-| Metodo | Path | Descripcion |
-|---|---|---|
-| `GET` | `/api/v1/greeting` | Saludo con nombre por defecto "World" |
-| `GET` | `/api/v1/greeting?name=DevOps` | Saludo personalizado |
-| `GET` | `/api/v1/health` | Health check del microservicio (status: UP) |
+| Metodo | Path | Descripcion | Respuesta |
+|---|---|---|---|
+| `GET` | `/api/v1/greetings` | Listar todos los saludos | 200, array de greetings |
+| `POST` | `/api/v1/greetings?name=DevOps` | Crear nuevo saludo | 201, greeting creado |
+| `GET` | `/api/v1/greetings/{id}` | Buscar saludo por ID | 200 / 404 |
+| `GET` | `/actuator/health` | Health check (Actuator) | 200, `{"status":"UP"}` |
 
-Ejemplo de respuesta:
+Ejemplo de respuesta `POST /api/v1/greetings?name=DevOps`:
 
 ```json
 {
-  "message": "Hello, DevOps!",
+  "id": 1,
   "name": "DevOps",
-  "timestamp": "2026-05-28T20:23:32.456Z"
+  "message": "Hello, DevOps!",
+  "timestamp": "2026-05-29T21:29:28.123Z"
 }
 ```
 
 ---
 
-## 7. Ejecucion local
+## 8. Ejecucion local
 
 ```bash
 # Build + tests + coverage
 mvn clean verify
 
-# Levantar con Docker Compose
+# Levantar con Docker Compose (app + PostgreSQL)
 docker compose up -d
 
-# Probar
-curl http://localhost:8080/api/v1/greeting?name=Duoc
-curl http://localhost:8080/api/v1/health
+# Probar endpoints
+curl http://localhost:8080/api/v1/greetings
+curl -X POST "http://localhost:8080/api/v1/greetings?name=Duoc"
+curl http://localhost:8080/api/v1/greetings/1
+curl http://localhost:8080/actuator/health
 
 # Detener
 docker compose down
@@ -153,19 +215,22 @@ docker compose down
 
 ---
 
-## 8. Declaracion de Uso de IA
+## 9. Declaracion de Uso de IA
 
-De acuerdo con las politicas de integridad academica de Duoc UC y la guia de uso de inteligencia artificial disponible en [https://bibliotecas.duoc.cl/ia](https://bibliotecas.duoc.cl/ia), el equipo declara que la unica herramienta de inteligencia artificial utilizada durante el desarrollo de este proyecto fue **OpenCode (Anthropic Claude via deepseek-v4-pro)** en Mayo 2026, exclusivamente para la redaccion y estructuracion del archivo `README.md` (documentacion del proyecto).
+De acuerdo con las politicas de integridad academica de Duoc UC y la guia de uso de inteligencia artificial disponible en [https://bibliotecas.duoc.cl/ia](https://bibliotecas.duoc.cl/ia), el equipo declara que la herramienta de inteligencia artificial **OpenCode (Anthropic Claude via deepseek-v4-pro)** fue utilizada en Mayo 2026 para los siguientes propositos:
 
 | Herramienta | Version / Modelo | Proposito especifico | Entregable impactado |
 |---|---|---|---|
-| **OpenCode (Anthropic Claude via deepseek-v4-pro)** | Mayo 2026 | Redaccion, formato y estructuracion de la documentacion del proyecto (descripcion tecnica, diagrama del pipeline, tablas de calidad y validacion). | `README.md` |
-
-El codigo fuente (Java, Dockerfile, docker-compose, workflows de CI/CD, configuracion de Maven y Snyk) fue desarrollado por los integrantes del equipo sin asistencia de inteligencia artificial.
+| **OpenCode (Anthropic Claude via deepseek-v4-pro)** | Mayo 2026 | Diseno e implementacion de la arquitectura hexagonal (Puertos y Adaptadores): estructura de paquetes, interfaces de puertos, adaptadores REST y JPA, mapping entre capas. | `domain/`, `application/`, `infrastructure/` |
+| **OpenCode (Anthropic Claude via deepseek-v4-pro)** | Mayo 2026 | Generacion de pruebas unitarias con JUnit 5 y Mockito para la capa de aplicacion, controlador y adaptador de persistencia (19 tests). | `src/test/` |
+| **OpenCode (Anthropic Claude via deepseek-v4-pro)** | Mayo 2026 | Redaccion, formato y estructuracion de la documentacion del proyecto (`README.md`). | `README.md` |
 
 ### Metodo de validacion
 
-El contenido del `README.md` generado con asistencia de IA fue revisado y corregido manualmente para asegurar que toda la informacion tecnica refleja fielmente el proyecto real, incluyendo versiones de dependencias, rutas de archivos, comandos ejecutables y nombres de jobs del pipeline.
+Todo el codigo generado con asistencia de IA fue revisado y validado mediante:
+- Ejecucion de `mvn clean verify` verificando que los 19 tests pasan y el Quality Gate de JaCoCo (80%) se cumple
+- Revision manual de la arquitectura hexagonal para asegurar que las dependencias apuntan hacia adentro y el dominio no tiene acoplamiento a frameworks
+- Verificacion de que el `docker-compose.yml` levanta correctamente los servicios `db` y `app` con healthchecks funcionales
 
 ### Compromiso etico
 
@@ -177,7 +242,7 @@ Declaracion firmada por:
 
 ---
 
-## 9. ⚠️ PLACEHOLDER — Reflexiones Individuales Obligatorias
+## 10. ⚠️ PLACEHOLDER — Reflexiones Individuales Obligatorias
 
 > **[COMPLETAR POR CADA INTEGRANTE]**
 >
@@ -207,6 +272,6 @@ Declaracion firmada por:
 
 ---
 
-## 10. Licencia
+## 11. Licencia
 
 Este proyecto forma parte de la Evaluacion Parcial N°2 de Ingenieria DevOps — Duoc UC.

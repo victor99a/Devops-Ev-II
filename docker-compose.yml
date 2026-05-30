@@ -1,5 +1,23 @@
 services:
-  demo-ms:
+  db:
+    image: postgres:15-alpine
+    container_name: demo-db
+    environment:
+      POSTGRES_DB: demo
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d demo"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  app:
     build:
       context: .
       dockerfile: Dockerfile
@@ -7,15 +25,16 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - SERVER_PORT=8080
-      - JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=75.0
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: demo
+      DB_USER: postgres
+      DB_PASS: postgres
+      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75.0
+    depends_on:
+      db:
+        condition: service_healthy
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/api/v1/health"]
-      interval: 30s
-      timeout: 3s
-      retries: 3
-      start_period: 15s
     deploy:
       resources:
         limits:
@@ -24,3 +43,6 @@ services:
         reservations:
           cpus: "0.5"
           memory: "256M"
+
+volumes:
+  pgdata:
