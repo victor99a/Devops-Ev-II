@@ -1,6 +1,6 @@
-# demo-ms — Microservicio Base para Evaluacion de CI/CD
+# Servicio Base para Evaluacion de CI/CD
 
-Microservicio REST con **Arquitectura Hexagonal (Puertos y Adaptadores)** desarrollado en **Java 17** con **Spring Boot 3.3.5**, persistencia en **PostgreSQL 15**, contenerizado con Docker multi-stage y orquestado via GitHub Actions con pipeline completo de CI/CD que incluye calidad de codigo, escaneo de seguridad y despliegue automatizado validado.
+Servicio REST con **Arquitectura Hexagonal (Puertos y Adaptadores)** desarrollado en **Java 17** con **Spring Boot 3.3.5**, persistencia en **PostgreSQL 15**, contenerizado con Docker multi-stage y orquestado via GitHub Actions con pipeline completo de CI/CD que incluye calidad de codigo, escaneo de seguridad y despliegue automatizado validado.
 
 ---
 
