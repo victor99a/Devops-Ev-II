@@ -237,7 +237,7 @@ Todo el codigo generado con asistencia de IA fue revisado y validado mediante:
 El equipo certifica que comprende el funcionamiento de cada componente entregado y asume responsabilidad plena sobre el producto final.
 
 Declaracion firmada por:
-- [Nombre integrante 1] — [RUT]
+- Victor Barrera Jara — 20968480-2
 - [Nombre integrante 2] — [RUT]
 
 ---
@@ -246,16 +246,17 @@ Declaracion firmada por:
 
 > **[COMPLETAR POR CADA INTEGRANTE]**
 >
-> ### Integrante 1: [Nombre completo]
+> ### Integrante 1: Victor Barrera Jara — 20968480-2
 >
 > **Reflexion sobre CI/CD:**
-> _(Describir que se aprendio sobre integracion continua, despliegue continuo, y como este pipeline automatiza la deteccion temprana de errores y vulnerabilidades.)_
+> Se aprendio que la integracion continua automatiza la validacion de cada cambio (build + tests + coverage), detectando errores en minutos en vez de dias. El pipeline bloquea cualquier PR o commit que no cumpla los quality gates: si la cobertura baja del 80% o Snyk encuentra vulnerabilidades High/Critical, el merge se rechaza automaticamente, forzando a corregir antes de integrar.
 >
 > **Reflexion sobre calidad y seguridad:**
-> _(Comentar como herramientas como JaCoCo y Snyk contribuyen a la calidad del software y a la seguridad de la cadena de suministro.)_
+> JaCoCo impone un piso minimo del 80% de cobertura de linea — si no se alcanza, `mvn verify` falla y el pipeline frena el merge. Snyk escanea dependencias en cada build y tambien rompe el pipeline si detecta severidades High/Critical. Ambas herramientas actuan como guardianes que impiden que codigo con baja calidad o riesgos de seguridad llegue a produccion.
 >
 > **Lecciones aprendidas:**
-> _(Mencionar al menos 2 lecciones concretas del proceso de implementacion del pipeline.)_
+> (1) **Dependabot**: Aprendi que este bot de GitHub abre PRs automaticas para mantener dependencias actualizadas (Maven y GitHub Actions). Sin embargo, puede romper el build si se aceptan cambios de major sin revision (ej. Spring Boot 3.3.5 → 4.0.6). La solucion fue configurar `ignore: update-types: semver-major` para que solo sugiera patches y minors.
+> (2) **Artifacts del pipeline**: Cada job genera artifacts con propositos distintos — `app-jar` es el JAR compilado listo para deploy, `jacoco-report` es el informe de cobertura que evidencia el cumplimiento del 80%, `surefire-reports` contiene los resultados XML de los tests (para debug en caso de fallos), y `dockerbuild` es la cache de capas de Docker que acelera builds futuros reutilizando dependencias ya descargadas.
 >
 > ---
 >
