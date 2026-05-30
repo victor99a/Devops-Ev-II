@@ -75,3 +75,57 @@ Ejemplo con variables custom:
 ```bash
 DB_HOST=192.168.1.100 DB_NAME=produccion java -jar target/demo-ms-1.0.0.jar
 ```
+
+## Flujo demo: cambio de mensaje + pipeline end-to-end
+
+Para demostrar que el pipeline funciona de punta a punta, se modifica el string del saludo
+y se observa como el pipeline valida el cambio y actualiza el despliegue local automaticamente.
+
+### Paso 1 — Levantar servicios y el sync
+
+```bash
+# Terminal 1: levantar Docker Compose
+docker compose up -d --build
+
+# Terminal 2: iniciar el monitor de cambios (auto-pull + redeploy)
+./sync.sh
+```
+
+### Paso 2 — Ver el mensaje actual
+
+```bash
+curl -s -X POST "http://localhost:8080/api/v1/greetings?name=Demo" | python3 -m json.tool
+# Respuesta: "message": "Hello devops V4, Demo!"
+```
+
+### Paso 3 — Modificar el mensaje
+
+Editar `src/main/java/com/example/demo/application/service/GreetingServiceImpl.java`:
+
+```java
+// Antes:
+String message = "Hello devops V4, " + name + "!";
+
+// Despues:
+String message = "Hola mundo V5, " + name + "!";
+```
+
+### Paso 4 — Commit + push (dispara el pipeline)
+
+```bash
+git add -A
+git commit -m "feat: cambiar mensaje de greeting a V5"
+git push
+```
+
+### Paso 5 — Observar
+
+- El pipeline se ejecuta en GitHub Actions (build → test → Snyk → deploy)
+- Al terminar, la terminal con `./sync.sh` detecta el nuevo commit
+- Hace `git pull` + `docker compose up -d --build` automaticamente
+- Al volver a probar el endpoint, el mensaje ya refleja el cambio
+
+```bash
+curl -s -X POST "http://localhost:8080/api/v1/greetings?name=Demo" | python3 -m json.tool
+# Respuesta: "message": "Hola mundo V5, Demo!"
+```
