@@ -39,7 +39,7 @@ class GreetingServiceImplTest {
             Greeting result = greetingService.createGreeting("Duoc");
 
             assertThat(result.name()).isEqualTo("Duoc");
-            assertThat(result.message()).isEqualTo("Hello, Duoc!");
+            assertThat(result.message()).isEqualTo("Hello devops, Duoc!");
             assertThat(result.timestamp()).isNotNull();
             assertThat(result.id()).isNull();
         }
@@ -52,7 +52,7 @@ class GreetingServiceImplTest {
             Greeting result = greetingService.createGreeting(null);
 
             assertThat(result.name()).isEqualTo("World");
-            assertThat(result.message()).isEqualTo("Hello, World!");
+            assertThat(result.message()).isEqualTo("Hello devops, World!");
             assertThat(result.timestamp()).isNotNull();
         }
 
@@ -64,7 +64,7 @@ class GreetingServiceImplTest {
             Greeting result = greetingService.createGreeting("   ");
 
             assertThat(result.name()).isEqualTo("World");
-            assertThat(result.message()).isEqualTo("Hello, World!");
+            assertThat(result.message()).isEqualTo("Hello devops, World!");
             assertThat(result.timestamp()).isNotNull();
         }
 
@@ -76,7 +76,7 @@ class GreetingServiceImplTest {
             Greeting result = greetingService.createGreeting("");
 
             assertThat(result.name()).isEqualTo("World");
-            assertThat(result.message()).isEqualTo("Hello, World!");
+            assertThat(result.message()).isEqualTo("Hello devops, World!");
             assertThat(result.timestamp()).isNotNull();
         }
     }
@@ -98,7 +98,7 @@ class GreetingServiceImplTest {
         @Test
         @DisplayName("returns list of greetings")
         void shouldReturnListOfGreetings() {
-            Greeting greeting = new Greeting(1L, "Duoc", "Hello, Duoc!", Instant.now());
+            Greeting greeting = new Greeting(1L, "Duoc", "Hello devops, Duoc!", Instant.now());
             when(greetingRepositoryPort.findAll()).thenReturn(List.of(greeting));
 
             List<Greeting> result = greetingService.findAllGreetings();
@@ -115,7 +115,7 @@ class GreetingServiceImplTest {
         @Test
         @DisplayName("returns greeting when found")
         void shouldReturnGreetingWhenFound() {
-            Greeting greeting = new Greeting(1L, "Duoc", "Hello, Duoc!", Instant.now());
+            Greeting greeting = new Greeting(1L, "Duoc", "Hello devops, Duoc!", Instant.now());
             when(greetingRepositoryPort.findById(1L)).thenReturn(Optional.of(greeting));
 
             Optional<Greeting> result = greetingService.findGreetingById(1L);
