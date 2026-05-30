@@ -111,7 +111,13 @@ jobs:
           cd $HOME/Duoc/Devops/demo-ms
           git pull origin main
 
-      - name: Redeploy with Docker Compose
+      - name: Redeploy with Docker Compose (si Docker esta corriendo)
+        continue-on-error: true
         run: |
           cd $HOME/Duoc/Devops/demo-ms
-          docker compose up -d --build
+          if docker info >/dev/null 2>&1; then
+            docker compose up -d --build
+          else
+            echo "Docker no esta corriendo. Solo se hizo git pull."
+            echo "Ejecuta manualmente: docker compose up -d --build"
+          fi
