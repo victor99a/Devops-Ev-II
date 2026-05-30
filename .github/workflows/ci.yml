@@ -9,7 +9,6 @@ on:
 
 env:
   JAVA_VERSION: "21"
-  MAVEN_OPTS: "-Dmaven.repo.local=${{ github.workspace }}/.m2/repository"
 
 jobs:
 
