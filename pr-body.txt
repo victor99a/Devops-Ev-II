@@ -1,0 +1,13 @@
+### Cambio realizado
+
+Se actualizó el mensaje de saludo de `"Hello, ${name}!"` a `"Hello devops, ${name}!"` en `GreetingServiceImpl.java`.
+
+### Archivos modificados
+
+- `src/main/java/com/example/demo/application/service/GreetingServiceImpl.java` — cambio del mensaje
+- `src/test/java/com/example/demo/application/service/GreetingServiceImplTest.java` — actualización de aserciones (6 assertions)
+
+### Evidencia
+
+**Antes:** `"Hello, Eliezer!"`
+**Después:** `"Hello devops, Eliezer!"`
