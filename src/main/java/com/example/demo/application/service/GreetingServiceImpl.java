@@ -24,7 +24,7 @@ public class GreetingServiceImpl implements CreateGreetingUseCase, LifecycleUseC
         if (name == null || name.isBlank()) {
             name = "World";
         }
-        String message = "Hello, " + name + "!";
+        String message = "Hello devops, " + name + "!";
         Greeting greeting = new Greeting(null, name, message, Instant.now());
         return greetingRepositoryPort.save(greeting);
     }
