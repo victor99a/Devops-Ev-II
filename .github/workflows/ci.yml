@@ -39,9 +39,41 @@ jobs:
           name: app-jar
           path: target/*.jar
 
+  security:
+    name: Security Scan (Snyk)
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v5
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+          cache: maven
+
+      - name: Resolve Maven dependencies
+        run: mvn dependency:resolve -B -q
+
+      - name: Install Snyk CLI via NPM
+        run: npm install -g snyk
+
+      - name: Run Snyk vulnerability scan
+        run: |
+          snyk test \
+            --all-projects \
+            --severity-threshold=high \
+            --policy-path=.snyk
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
   deploy:
     name: Deploy
-    needs: build
+    needs: security
     runs-on: ubuntu-latest
     if: github.event_name != 'pull_request'
 
