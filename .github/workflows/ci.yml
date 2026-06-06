@@ -113,7 +113,11 @@ jobs:
 
       - name: Redeploy with Docker Compose (si Docker esta corriendo)
         continue-on-error: true
+        env:
+          DOCKER_CONFIG: /tmp/docker-config-no-keychain
         run: |
+          mkdir -p $DOCKER_CONFIG
+          echo '{"credsStore":""}' > $DOCKER_CONFIG/config.json
           cd $HOME/Duoc/Devops/demo-ms
           if docker info >/dev/null 2>&1; then
             docker compose up -d --build
