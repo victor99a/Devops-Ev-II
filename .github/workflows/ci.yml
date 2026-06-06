@@ -124,10 +124,11 @@ jobs:
           cfg = home + '/.docker/config.json'
           with open(cfg) as f:
               c = json.load(f)
-          c.pop('credsStore', None)
+            c.pop('credsStore', None)
           with open(cfg, 'w') as f:
               json.dump(c, f)
           "
+            docker compose down
             docker compose up -d --build
           else
             echo "Docker no esta corriendo. Solo se hizo git pull."
