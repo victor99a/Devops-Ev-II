@@ -113,13 +113,12 @@ jobs:
 
       - name: Redeploy with Docker Compose (si Docker esta corriendo)
         continue-on-error: true
-        env:
-          DOCKER_CONFIG: /tmp/docker-config-no-keychain
         run: |
-          mkdir -p $DOCKER_CONFIG
-          echo '{"credsStore":""}' > $DOCKER_CONFIG/config.json
-          cd $HOME/Duoc/Devops/demo-ms
+          cd "$HOME"/Duoc/Devops/demo-ms || exit 1
           if docker info >/dev/null 2>&1; then
+            export DOCKER_CONFIG=/tmp/docker-config-no-keychain
+            mkdir -p "$DOCKER_CONFIG"
+            echo '{"credsStore":""}' > "$DOCKER_CONFIG/config.json"
             docker compose up -d --build
           else
             echo "Docker no esta corriendo. Solo se hizo git pull."
