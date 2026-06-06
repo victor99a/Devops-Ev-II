@@ -116,11 +116,19 @@ jobs:
         run: |
           cd $HOME/Duoc/Devops/demo-ms
           if docker info >/dev/null 2>&1; then
-            DOCKER_CONFIG=/tmp/docker-config-no-keychain
-            mkdir -p "$DOCKER_CONFIG"/cli-plugins
-            ln -sf "$HOME"/.docker/cli-plugins/* "$DOCKER_CONFIG"/cli-plugins/
-            echo '{"credsStore":""}' > "$DOCKER_CONFIG"/config.json
-            DOCKER_CONFIG=$DOCKER_CONFIG docker compose up -d --build
+            cp "$HOME"/.docker/config.json "$HOME"/.docker/config.json.bak
+            trap 'mv "$HOME"/.docker/config.json.bak "$HOME"/.docker/config.json' EXIT
+            python3 -c "
+          import json, os
+          home = os.environ['HOME']
+          cfg = home + '/.docker/config.json'
+          with open(cfg) as f:
+              c = json.load(f)
+          c.pop('credsStore', None)
+          with open(cfg, 'w') as f:
+              json.dump(c, f)
+          "
+            docker compose up -d --build
           else
             echo "Docker no esta corriendo. Solo se hizo git pull."
             echo "Ejecuta manualmente: docker compose up -d --build"
