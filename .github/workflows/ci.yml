@@ -120,6 +120,7 @@ jobs:
             trap 'mv "$HOME"/.docker/config.json.bak "$HOME"/.docker/config.json' EXIT
             python3 -c "import json, os; h=os.environ['HOME']; c=json.load(open(h+'/.docker/config.json')); c.pop('credsStore',None); json.dump(c, open(h+'/.docker/config.json','w'))"
             docker compose down
+            docker rm -f demo-db demo-ms 2>/dev/null
             docker compose up -d --build
           else
             echo "Docker no esta corriendo. Solo se hizo git pull."
