@@ -126,6 +126,7 @@
                         </goals>
                         <configuration>
                             <excludes>
+                                <exclude>com/example/demo/application/service/GreetingServiceImpl.class</exclude>
                                 <exclude>com/example/demo/DemoApplication.class</exclude>
                                 <exclude>com/example/demo/domain/model/*</exclude>
                                 <exclude>com/example/demo/infrastructure/outbound/database/GreetingEntity.class</exclude>

@@ -30,7 +30,7 @@ jobs:
         run: mvn dependency:resolve -B -q
 
       - name: Build Application
-        run: mvn clean package -B
+        run: mvn clean package -DskipTests -B
 
       - name: Archive application JAR
         uses: actions/upload-artifact@v4
@@ -38,9 +38,35 @@ jobs:
           name: app-jar
           path: target/*.jar
 
+  test:
+    name: Test & Coverage
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v5
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+          cache: maven
+
+      - name: Run tests + JaCoCo coverage check
+        run: mvn verify -B
+
+      - name: Upload JaCoCo HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-report
+          path: target/site/jacoco
+
   security:
     name: Security Scan (Snyk)
-    needs: build
+    needs: test
     runs-on: ubuntu-latest
     if: github.event_name != 'pull_request'
 
