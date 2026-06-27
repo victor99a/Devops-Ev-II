@@ -21,9 +21,9 @@ El proyecto implementa una arquitectura **Full-Stack de Microservicios** compues
 - **Backend:** Microservicio REST en Java 17 + Spring Boot 3.3.5 con Arquitectura Hexagonal (Puertos y Adaptadores), persistencia en PostgreSQL 15, expuesto en puerto 8080.
 - **Frontend:** Aplicación SPA en React 18 + TypeScript 5 + Vite 6, servida por Nginx 1.27 en puerto 80 con reverse proxy al backend.
 - **Base de Datos:** PostgreSQL 15 en contenedor dedicado.
-- **Orquestación:** Kubernetes (AWS EKS) con manifiestos declarativos para todos los componentes.
-- **Pipeline CI/CD:** GitHub Actions con 6 etapas secuenciales estrictas que incluyen análisis de calidad, escaneo de seguridad, construcción de imágenes Docker, despliegue automatizado en EKS y smoke tests.
-- **Observabilidad:** Métricas Prometheus vía Micrometer + Actuator, logs centralizados en CloudWatch, dashboards en Grafana y CloudWatch.
+- **Orquestación:** Docker Compose en EC2 (3 servicios: PostgreSQL → Backend → Frontend), con healthchecks y restart policies.
+- **Pipeline CI/CD:** GitHub Actions con 6 etapas secuenciales estrictas que incluyen análisis de calidad, escaneo de seguridad, construcción de imágenes Docker, despliegue automatizado vía SSH a EC2 y smoke tests.
+- **Observabilidad:** Métricas Prometheus vía Micrometer + Actuator, CloudWatch Agent en EC2 para métricas de sistema y logs, dashboards en Grafana y CloudWatch.
 
 ### 1.2 Diagrama de Arquitectura
 
@@ -36,30 +36,21 @@ El proyecto implementa una arquitectura **Full-Stack de Microservicios** compues
                     │  │ 3. Security (Snyk+   │ │
                     │  │    Trivy)            │ │
                     │  │ 4. Build & Push (ECR)│ │
-                    │  │ 5. Deploy K8s (EKS)  │ │
+                    │  │ 5. Deploy EC2 (SSH)  │ │
                     │  │ 6. Smoke Tests       │ │
                     │  └──────────────────────┘ │
                     └────────────┬─────────────┘
                                  │
                     ┌────────────▼─────────────┐
-                    │   AWS ECR (Registro)      │
-                    │  ┌─────────┐ ┌─────────┐ │
-                    │  │ Backend │ │Frontend │ │
-                    │  └─────────┘ └─────────┘ │
-                    └────────────┬─────────────┘
-                                 │
-                    ┌────────────▼─────────────┐
-                    │   AWS EKS (Kubernetes)    │
+                    │   AWS EC2 (t3.medium)     │
                     │  ┌──────────────────────┐ │
-                    │  │ Ingress (Nginx)      │ │
+                    │  │ Docker Compose       │ │
                     │  ├──────────────────────┤ │
-                    │  │ Frontend Svc :80     │ │
-                    │  │  ├─ Pod (Nginx)      │ │
-                    │  │  └─ Nginx Exporter   │ │
+                    │  │ Frontend :80         │ │
+                    │  │  └─ Nginx (React)    │ │
                     │  ├──────────────────────┤ │
-                    │  │ Backend Svc :8080    │ │
-                    │  │  ├─ Pod 1 (JVM)      │ │
-                    │  │  └─ Pod 2 (JVM)      │ │
+                    │  │ Backend :8080        │ │
+                    │  │  └─ Java/Spring Boot │ │
                     │  ├──────────────────────┤ │
                     │  │ PostgreSQL :5432     │ │
                     │  └──────────────────────┘ │
@@ -81,7 +72,7 @@ La arquitectura integra las siguientes herramientas para permitir **toma de deci
 |---|---|---|---|
 | **Calidad de Código** | SonarCloud + JaCoCo | Cobertura de pruebas, bugs, code smells, vulnerabilidades | ¿El código cumple el umbral mínimo del 80% de cobertura? ¿Hay bugs críticos que impidan el despliegue? |
 | **Seguridad** | Snyk + Trivy | Vulnerabilidades en dependencias e imágenes Docker | ¿Las dependencias tienen CVEs de severidad High/Critical? ¿La imagen Docker contiene binarios vulnerables? |
-| **CI/CD** | GitHub Actions + AWS ECR + EKS | Tiempo de despliegue, tasa de éxito/falo de pipelines | ¿El pipeline está ralentizando los despliegues? ¿Hay fallos recurrentes que requieran ajustes? |
+| **CI/CD** | GitHub Actions + AWS ECR + EC2 | Tiempo de despliegue, tasa de éxito/fallo de pipelines | ¿El pipeline está ralentizando los despliegues? ¿Hay fallos recurrentes que requieran ajustes? |
 | **Monitoreo** | Prometheus + Micrometer | Uso de CPU/Memoria, tasa de errores HTTP, latencia, conexiones DB | ¿El backend necesita más réplicas? ¿Hay memory leaks? ¿La latencia P99 supera el SLA? |
 | **Logs** | CloudWatch Logs + Fluent Bit | Errores de aplicación, stacktraces, eventos de infraestructura | ¿Hay errores recurrentes que requieran debugging? ¿Patrones de fallo en producción? |
 | **Dashboards** | Grafana + CloudWatch | Vista centralizada de todos los indicadores | ¿El servicio está saludable en este momento? ¿Hubo degradación tras el último deploy? |
@@ -96,13 +87,13 @@ El pipeline implementa **tres puntos de control Fail-Fast** que bloquean el desp
 
 3. **Trivy Image Scan:** Antes del push a ECR, Trivy escanea las imágenes Docker en busca de vulnerabilidades CRITICAL o HIGH (`trivy-action` con `exit-code: 1`). Si encuentra alguna, la imagen **no se publica en ECR** y el pipeline falla.
 
-Adicionalmente, cada paso crítico usa `set -euo pipefail` para que cualquier comando que falle (curl, kubectl, etc.) detenga el flujo inmediatamente.
+Adicionalmente, cada paso crítico usa `set -euo pipefail` para que cualquier comando que falle (curl, SSH, etc.) detenga el flujo inmediatamente.
 
 ### 1.5 Estrategia de Monitoreo y Observabilidad
 
 - **Backend:** Expone métricas JVM, HTTP y de base de datos en `/actuator/prometheus` vía Micrometer + Prometheus registry.
 - **Frontend:** Métricas de Nginx expuestas vía sidecar `nginx-prometheus-exporter` en puerto 9113.
-- **Descubrimiento automático:** Los Services K8s llevan anotaciones `prometheus.io/scrape: "true"`. Adicionalmente, se proveen `ServiceMonitor` CRDs para Prometheus Operator.
+- **Descubrimiento automático:** El endpoint `/actuator/prometheus` expone métricas en formato Prometheus. El dashboard de Grafana incluido en `monitoring/` las consume directamente. El CloudWatch Agent en la EC2 recolecta métricas del sistema (CPU, memoria, disco).
 - **Dashboards:** Un dashboard de Grafana (JSON incluido en `monitoring/`) y un script de CloudWatch Dashboard consolidan CPU, memoria, tasa de errores, latencia, cobertura y tiempos de despliegue en una vista única.
 
 ---
@@ -131,7 +122,7 @@ Devops-Ev-II/
 │       ├── App.tsx / App.css            # UI Dark Premium
 │       └── api/greeting.ts              # Cliente REST (axios)
 │
-├── k8s/                                 # Manifiestos Kubernetes
+├── k8s/                                 # Manifiestos Kubernetes (referencia histórica, versión inicial)
 │   ├── namespace.yaml                   # Namespace: greeting-app
 │   ├── configmap.yaml / secret.yaml     # Configuración + credenciales DB
 │   ├── postgres-deployment.yaml         # PostgreSQL Deployment + PVC
@@ -163,7 +154,7 @@ Devops-Ev-II/
 | `GET` | `/api/v1/greetings` | Listar todos los saludos |
 | `POST` | `/api/v1/greetings?name=...` | Crear nuevo saludo |
 | `GET` | `/api/v1/greetings/{id}` | Buscar saludo por ID |
-| `GET` | `/actuator/health` | Health check (K8s probes) |
+| `GET` | `/actuator/health` | Health check (Docker Compose healthcheck) |
 | `GET` | `/actuator/metrics` | Métricas de Spring Boot |
 | `GET` | `/actuator/prometheus` | Métricas en formato Prometheus |
 
@@ -172,7 +163,7 @@ Devops-Ev-II/
 | Path | Descripción |
 |---|---|
 | `/` | SPA (React) |
-| `/health` | Health check Nginx (K8s probes + nginx-exporter scrape) |
+| `/health` | Health check Nginx (Docker Compose healthcheck) |
 
 ### 3.3 Métricas Clave Expuestas
 
@@ -199,8 +190,8 @@ Devops-Ev-II/
 | 2 | **Quality Gate** | SonarCloud Quality Gate Action | `exit 1` si el Quality Gate reporta ERROR |
 | 3 | **Security Scan** | Snyk (dependencias) | `snyk test --severity-threshold=high` retorna exit code ≠ 0 |
 | 4 | **Build & Push** | Docker Buildx, Trivy, ECR | Trivy `exit-code: 1` si detecta CRITICAL/HIGH. Imágenes no se publican |
-| 5 | **Deploy K8s** | AWS CLI, kubectl, EKS | `kubectl rollout status` con timeout; falla si pods no están Ready |
-| 6 | **Smoke Tests** | curl via pods temporales | `exit 1` si health, API o métricas no responden correctamente |
+| 5 | **Deploy EC2** | SSH + Docker Compose | `docker compose up -d --build` + health checks + CloudWatch metric |
+| 6 | **Smoke Tests** | curl contra IP pública EC2 | `exit 1` si health, API, métricas o HTML no responden |
 
 ---
 
@@ -257,8 +248,9 @@ Devops-Ev-II/
 |---|---|
 | `SONAR_TOKEN` | Autenticación con SonarCloud |
 | `SNYK_TOKEN` | Autenticación con Snyk |
-| `AWS_ACCESS_KEY_ID` | Credenciales AWS para ECR + EKS |
-| `AWS_SECRET_ACCESS_KEY` | Credenciales AWS para ECR + EKS |
+| `AWS_ACCESS_KEY_ID` | Credenciales AWS para ECR + EC2 |
+| `AWS_SECRET_ACCESS_KEY` | Credenciales AWS para ECR + EC2 |
+| `EC2_SSH_PRIVATE_KEY` | Llave SSH privada para conectar a la EC2 |
 
 ### 6.2 GitHub Variables requeridas
 
@@ -266,7 +258,6 @@ Devops-Ev-II/
 |---|---|---|
 | `SONAR_ORG` | Nombre de organización en SonarCloud | Análisis de calidad |
 | `AWS_DEPLOY_ROLE` | ARN del rol IAM para despliegue | Autenticación OIDC con AWS |
-| `EKS_CLUSTER_NAME` | Nombre del cluster EKS | Conexión kubectl |
 
 ### 6.3 Repositorios ECR requeridos
 
@@ -287,19 +278,34 @@ docker compose up -d --build         # Levanta backend + PostgreSQL
 cd frontend && npm run dev           # Frontend en http://localhost:5173
 ```
 
-### 7.2 Producción (EKS)
+### 7.2 Producción (EC2)
 
 ```bash
-# El despliegue es automático vía GitHub Actions al hacer push a main.
-# Manualmente:
-aws eks update-kubeconfig --region us-east-1 --name <CLUSTER_NAME>
-kubectl apply -f k8s/namespace.yaml
-kubectl apply -f k8s/configmap.yaml
-kubectl apply -f k8s/secret.yaml
-kubectl apply -f k8s/
-kubectl rollout status deployment/backend -n greeting-app
-kubectl rollout status deployment/frontend -n greeting-app
+# Crear Security Group
+bash infra/ec2-security-group.sh
+
+# Lanzar EC2 con User Data (Docker + clonar repo + levantar servicios)
+SG_ID=$(aws ec2 describe-security-groups --filters "Name=group-name,Values=greeting-ec2-sg" --query 'SecurityGroups[0].GroupId' --output text --region us-east-1)
+
+aws ec2 run-instances \
+  --region us-east-1 \
+  --image-id ami-01816d07b1128cd2d \
+  --instance-type t3.medium \
+  --key-name <TU_KEY> \
+  --security-group-ids "$SG_ID" \
+  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=greeting-ec2-ep3}]' \
+  --user-data file://infra/ec2-setup.sh
+
+# Obtener IP pública
+aws ec2 describe-instances \
+  --filters "Name=tag:Name,Values=greeting-ec2-ep3" \
+  --query 'Reservations[0].Instances[0].PublicIpAddress' \
+  --output text --region us-east-1
+
+# Acceder: http://<IP_PUBLICA>
 ```
+
+El despliegue es automático vía GitHub Actions al hacer push a main. El pipeline hace SSH a la EC2, git pull, y `docker compose up -d --build`.
 
 ---
 
@@ -328,8 +334,8 @@ De acuerdo con las políticas de integridad académica de Duoc UC y la guía de 
 | **OpenCode (deepseek-v4-pro)** | Junio 2026 | Diseño e implementación de la arquitectura hexagonal (Puertos y Adaptadores) para el backend: estructura de paquetes, interfaces de puertos, adaptadores REST y JPA. | `src/main/java/com/example/demo/domain/`, `application/`, `infrastructure/` |
 | **OpenCode (deepseek-v4-pro)** | Junio 2026 | Generación de pruebas unitarias con JUnit 5, Mockito y MockMvc para capa de aplicación, controlador REST y adaptador de persistencia (19 tests). | `src/test/` |
 | **OpenCode (deepseek-v4-pro)** | Junio 2026 | Creación del frontend React + TypeScript + Vite con diseño Dark Premium, incluyendo componente App, estilos CSS, configuración de Vite y cliente HTTP con axios. | `frontend/` |
-| **OpenCode (deepseek-v4-pro)** | Junio 2026 | Generación de manifiestos Kubernetes (Deployments, Services, Ingress, ServiceMonitor, ConfigMap, Secret) para despliegue en AWS EKS con anotaciones de monitoreo Prometheus. | `k8s/` |
-| **OpenCode (deepseek-v4-pro)** | Junio 2026 | Diseño del pipeline CI/CD completo en GitHub Actions con 6 etapas secuenciales, mecanismo Fail-Fast (SonarCloud Quality Gate + Snyk + Trivy), build multi-stage Docker, push a ECR y despliegue automatizado en EKS. | `.github/workflows/ci-cd.yml` |
+| **OpenCode (deepseek-v4-pro)** | Junio 2026 | Generación de manifiestos Kubernetes (Deployments, Services, Ingress, ServiceMonitor, ConfigMap, Secret) para despliegue en AWS EKS — fase inicial del proyecto. | `k8s/` |
+| **OpenCode (deepseek-v4-pro)** | Junio 2026 | Diseño del pipeline CI/CD completo en GitHub Actions con 6 etapas secuenciales, mecanismo Fail-Fast (SonarCloud Quality Gate + Snyk + Trivy), build multi-stage Docker, push a ECR y despliegue automatizado vía SSH + Docker Compose en EC2. | `.github/workflows/ci-cd.yml` |
 | **OpenCode (deepseek-v4-pro)** | Junio 2026 | Configuración de monitoreo: integración Micrometer + Prometheus en backend, sidecar nginx-exporter en frontend, dashboard Grafana JSON, script CloudWatch Dashboard, y documentación de métricas. | `monitoring/`, `pom.xml`, `application.yml` |
 | **OpenCode (deepseek-v4-pro)** | Junio 2026 | Estructura y redacción del presente informe de evaluación (`README_EVALUACION.md`), incluyendo secciones de arquitectura, análisis de resultados y declaración de uso de IA. | `README_EVALUACION.md` |
 

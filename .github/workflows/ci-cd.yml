@@ -1,8 +1,8 @@
-name: CI/CD Pipeline — EP3 Full-Stack
+name: CI/CD Pipeline — EP3 Full-Stack (EC2)
 
 on:
   push:
-    branches: [main, develop, "feature/**"]
+    branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -402,13 +402,11 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  deploy-k8s:
-    name: Deploy to Kubernetes (EKS)
+  deploy-ec2:
+    name: Deploy to EC2 (Docker Compose)
     needs: build-push
     runs-on: ubuntu-latest
     if: github.event_name != 'pull_request'
-    env:
-      DEPLOY_START_EPOCH: ${{ github.run_id }}
     steps:
       - uses: actions/checkout@v4
 
@@ -418,91 +416,66 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE }}
 
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Install kubectl
-        uses: azure/setup-kubectl@v4
-        with:
-          version: v1.29
-
-      - name: Generate kubeconfig for EKS
+      - name: Get EC2 public IP
+        id: ec2-ip
         run: |
           set -euo pipefail
-          aws eks update-kubeconfig \
+          IP=$(aws ec2 describe-instances \
             --region "${{ env.AWS_REGION }}" \
-            --name "${{ vars.EKS_CLUSTER_NAME }}" || {
-              echo "::error::Failed to authenticate with EKS cluster. Check AWS credentials and cluster name."
-              exit 1
-            }
-
-      - name: Verify cluster connectivity
-        run: |
-          set -euo pipefail
-          kubectl cluster-info || {
-            echo "::error::Cannot reach Kubernetes cluster."
+            --filters "Name=tag:Name,Values=greeting-ec2-ep3" "Name=instance-state-name,Values=running" \
+            --query 'Reservations[0].Instances[0].PublicIpAddress' \
+            --output text)
+          if [ -z "$IP" ] || [ "$IP" = "None" ]; then
+            echo "::error::No EC2 instance found with tag Name=greeting-ec2-ep3"
             exit 1
-          }
-          kubectl get nodes --no-headers | head -1
+          fi
+          echo "ip=$IP" >> $GITHUB_OUTPUT
+          echo "EC2 public IP: $IP"
 
-      - name: Substitute ECR registry in manifests
+      - name: Deploy via SSH (Docker Compose)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ steps.ec2-ip.outputs.ip }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          script: |
+            set -euo pipefail
+            cd /home/ec2-user/Devops-Ev-II
+
+            echo "=== Pulling latest code ==="
+            git checkout main
+            git pull origin main
+
+            echo "=== Stopping old containers ==="
+            docker compose down --remove-orphans || true
+
+            echo "=== Building and starting services ==="
+            docker compose up -d --build
+
+            echo "=== Waiting for health checks ==="
+            sleep 20
+            docker compose ps
+
+            echo "=== Verifying services ==="
+            curl -fsS -o /dev/null -w "Frontend: HTTP %{http_code}\n" http://localhost:80/health
+            curl -fsS http://localhost:8080/actuator/health | python3 -m json.tool
+            echo "All services healthy"
+
+      - name: Verify services from GitHub Actions
         run: |
           set -euo pipefail
-          ECR_REGISTRY="${{ steps.login-ecr.outputs.registry }}"
-          find k8s -name "*.yaml" -exec sed -i "s|\${ECR_REGISTRY}|${ECR_REGISTRY}|g" {} +
-
-      - name: Apply Kubernetes manifests
-        run: |
-          set -euo pipefail
-          kubectl apply -f k8s/namespace.yaml
-          kubectl apply -f k8s/configmap.yaml
-          kubectl apply -f k8s/secret.yaml
-          kubectl apply -f k8s/postgres-deployment.yaml
-          kubectl apply -f k8s/postgres-service.yaml
-          kubectl apply -f k8s/backend-deployment.yaml
-          kubectl apply -f k8s/backend-service.yaml
-          kubectl apply -f k8s/frontend-deployment.yaml
-          kubectl apply -f k8s/frontend-service.yaml
-          kubectl apply -f k8s/ingress.yaml
-          kubectl apply -f k8s/servicemonitor.yaml
-
-      - name: Verify backend rollout
-        run: |
-          set -euo pipefail
-          kubectl rollout status deployment/backend \
-            -n greeting-app \
-            --timeout=300s || {
-              echo "::error::Backend rollout FAILED. Check logs with: kubectl logs -n greeting-app -l app=backend --tail=50"
-              kubectl describe pods -n greeting-app -l app=backend
-              exit 1
-            }
-
-      - name: Verify frontend rollout
-        run: |
-          set -euo pipefail
-          kubectl rollout status deployment/frontend \
-            -n greeting-app \
-            --timeout=120s || {
-              echo "::error::Frontend rollout FAILED. Check logs with: kubectl logs -n greeting-app -l app=frontend --tail=50"
-              kubectl describe pods -n greeting-app -l app=frontend
-              exit 1
-            }
-
-      - name: Verify PostgreSQL is ready
-        run: |
-          set -euo pipefail
-          kubectl wait --for=condition=ready pod \
-            -l app=postgres \
-            -n greeting-app \
-            --timeout=120s || {
-              echo "::error::PostgreSQL pod is not ready."
-              exit 1
-            }
+          IP="${{ steps.ec2-ip.outputs.ip }}"
+          echo "Verifying frontend..."
+          curl -fsS -o /dev/null -w "Frontend: HTTP %{http_code}\n" "http://$IP/health"
+          echo "Verifying backend..."
+          curl -fsS "http://$IP:8080/actuator/health" | python3 -m json.tool
+          echo "Verifying API..."
+          curl -fsS -X POST "http://$IP/api/v1/greetings?name=CI-CD-Deploy" | grep "Hola DevOps V4"
+          echo "Verifying Prometheus..."
+          curl -fsS "http://$IP:8080/actuator/prometheus" | grep -q "jvm_memory_used_bytes" && echo "Metrics OK"
 
       - name: Publish deploy metrics to CloudWatch
         run: |
-          set -euo pipefail
           DEPLOY_END=$(date +%s)
           DEPLOY_DURATION=$(( DEPLOY_END - $(date -d "${{ github.run_started_at }}" +%s) ))
           aws cloudwatch put-metric-data \
@@ -516,7 +489,7 @@ jobs:
 
   smoke-tests:
     name: Smoke Tests
-    needs: deploy-k8s
+    needs: deploy-ec2
     runs-on: ubuntu-latest
     steps:
       - name: Configure AWS credentials
@@ -525,66 +498,66 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE }}
 
-      - name: Install kubectl
-        uses: azure/setup-kubectl@v4
-        with:
-          version: v1.29
-
-      - name: Generate kubeconfig
+      - name: Get EC2 public IP
+        id: ec2-ip
         run: |
           set -euo pipefail
-          aws eks update-kubeconfig \
+          IP=$(aws ec2 describe-instances \
             --region "${{ env.AWS_REGION }}" \
-            --name "${{ vars.EKS_CLUSTER_NAME }}"
+            --filters "Name=tag:Name,Values=greeting-ec2-ep3" "Name=instance-state-name,Values=running" \
+            --query 'Reservations[0].Instances[0].PublicIpAddress' \
+            --output text)
+          echo "ip=$IP" >> $GITHUB_OUTPUT
+          echo "Target EC2: $IP"
 
       - name: Smoke — Frontend health
         id: smoke-frontend
         run: |
-          set -euo pipefail
-          kubectl run smoke-curl-frontend --rm -i --restart=Never --image=curlimages/curl:8.9.1 -n greeting-app -- \
-            curl -f -s -o /dev/null -w "%{http_code}" http://frontend-service.greeting-app.svc.cluster.local/health || {
-              echo "::error::SMOKE FAILED: Frontend health endpoint not responding"
-              exit 1
-            }
+          curl -fsS -o /dev/null -w "%{http_code}" http://${{ steps.ec2-ip.outputs.ip }}/health | grep -q 200 || {
+            echo "::error::SMOKE FAILED: Frontend /health not 200"
+            exit 1
+          }
 
       - name: Smoke — Backend health
         id: smoke-backend
         run: |
-          set -euo pipefail
-          kubectl run smoke-curl-backend --rm -i --restart=Never --image=curlimages/curl:8.9.1 -n greeting-app -- \
-            curl -f -s http://backend-service.greeting-app.svc.cluster.local:8080/actuator/health || {
-              echo "::error::SMOKE FAILED: Backend health endpoint not responding"
-              exit 1
-            }
-
-      - name: Smoke — Create greeting via API
-        id: smoke-create
-        run: |
-          set -euo pipefail
-          RESPONSE=$(kubectl run smoke-curl-post --rm -i --restart=Never --image=curlimages/curl:8.9.1 -n greeting-app -- \
-            curl -f -s -X POST "http://backend-service.greeting-app.svc.cluster.local:8080/api/v1/greetings?name=EP3-Smoke")
-          echo "$RESPONSE" | grep -q "Hola DevOps V4" || {
-            echo "::error::SMOKE FAILED: POST /api/v1/greetings returned unexpected response: $RESPONSE"
+          curl -fsS http://${{ steps.ec2-ip.outputs.ip }}:8080/actuator/health | grep -q UP || {
+            echo "::error::SMOKE FAILED: Backend /actuator/health not UP"
             exit 1
           }
-          echo "SMOKE PASSED: Greeting created successfully"
 
-      - name: Smoke — Prometheus metrics exposed
+      - name: Smoke — Create greeting
+        id: smoke-create
+        run: |
+          curl -fsS -X POST "http://${{ steps.ec2-ip.outputs.ip }}/api/v1/greetings?name=EP3-Smoke" | grep -q "Hola DevOps V4" || {
+            echo "::error::SMOKE FAILED: POST /api/v1/greetings unexpected response"
+            exit 1
+          }
+          echo "SMOKE PASSED: Greeting created"
+
+      - name: Smoke — Prometheus metrics
         id: smoke-metrics
         run: |
-          set -euo pipefail
-          kubectl run smoke-curl-metrics --rm -i --restart=Never --image=curlimages/curl:8.9.1 -n greeting-app -- \
-            curl -f -s http://backend-service.greeting-app.svc.cluster.local:8080/actuator/prometheus | grep -q "jvm_memory_used_bytes" || {
-              echo "::error::SMOKE FAILED: Prometheus metrics endpoint not exposing expected data"
-              exit 1
-            }
-          echo "SMOKE PASSED: Prometheus metrics available"
+          curl -fsS http://${{ steps.ec2-ip.outputs.ip }}:8080/actuator/prometheus | grep -q "jvm_memory_used_bytes" || {
+            echo "::error::SMOKE FAILED: /actuator/prometheus not exposing metrics"
+            exit 1
+          }
+          echo "SMOKE PASSED: Prometheus metrics exposed"
 
-      - name: Smoke — Publish health metrics to CloudWatch
+      - name: Smoke — Frontend serves HTML
+        id: smoke-html
+        run: |
+          curl -fsS http://${{ steps.ec2-ip.outputs.ip }}/ | grep -q "<title>" || {
+            echo "::error::SMOKE FAILED: Frontend not serving HTML"
+            exit 1
+          }
+          echo "SMOKE PASSED: Frontend serving HTML"
+
+      - name: Publish smoke test metrics to CloudWatch
         if: always()
         run: |
           PASS_COUNT=0
-          for step in smoke-frontend smoke-backend smoke-create smoke-metrics; do
+          for step in smoke-frontend smoke-backend smoke-create smoke-metrics smoke-html; do
             if [ "${{ steps[step].outcome }}" = "success" ]; then
               PASS_COUNT=$((PASS_COUNT + 1))
             fi
@@ -595,31 +568,3 @@ jobs:
             --value "$PASS_COUNT" \
             --unit Count \
             --region "${{ env.AWS_REGION }}"
-
-  sync-local:
-    name: Sync & Redeploy Local
-    needs: smoke-tests
-    if: github.event_name != 'pull_request'
-    runs-on: self-hosted
-    steps:
-      - name: Pull latest from main
-        run: |
-          set -euo pipefail
-          cd $HOME/Duoc/Devops/demo-ms
-          git pull origin main
-
-      - name: Redeploy with Docker Compose
-        continue-on-error: true
-        run: |
-          cd $HOME/Duoc/Devops/demo-ms
-          if docker info >/dev/null 2>&1; then
-            cp "$HOME"/.docker/config.json "$HOME"/.docker/config.json.bak
-            trap 'mv "$HOME"/.docker/config.json.bak "$HOME"/.docker/config.json' EXIT
-            python3 -c "import json, os; h=os.environ['HOME']; c=json.load(open(h+'/.docker/config.json')); c.pop('credsStore',None); json.dump(c, open(h+'/.docker/config.json','w'))"
-            docker compose down
-            docker rm -f demo-db demo-ms 2>/dev/null
-            docker compose up -d --build
-          else
-            echo "Docker no esta corriendo. Solo se hizo git pull."
-            echo "Ejecuta manualmente: docker compose up -d --build"
-          fi
