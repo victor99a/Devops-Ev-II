@@ -9,9 +9,6 @@ on:
 
 env:
   JAVA_VERSION: "21"
-  AWS_REGION: us-east-1
-  ECR_BACKEND: demo-ms-backend
-  ECR_FRONTEND: demo-ms-frontend
   SONAR_ORG: victor99a
   SONAR_HOST: https://sonarcloud.io
 
@@ -208,79 +205,3 @@ jobs:
         with:
           name: snyk-report
           path: snyk-backend-report.json
-
-  # ═══════════════════════════════════════════════════════
-  # ETAPA 4: Build, Scan & Push to ECR
-  # ═══════════════════════════════════════════════════════
-
-  build-push:
-    name: Build, Scan & Push to ECR
-    needs: security-scan
-    runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request'
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Build backend image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile
-          push: false
-          load: true
-          tags: demo-ms-backend:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Trivy — Scan backend image
-        id: trivy-backend
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: demo-ms-backend:ci
-          format: table
-          exit-code: '1'
-          severity: CRITICAL
-          timeout: 5m0s
-        continue-on-error: true
-
-      - name: Build frontend image
-        uses: docker/build-push-action@v6
-        with:
-          context: ./frontend
-          push: false
-          load: true
-          tags: demo-ms-frontend:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Trivy — Scan frontend image
-        id: trivy-frontend
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: demo-ms-frontend:ci
-          format: table
-          exit-code: '1'
-          severity: CRITICAL
-          timeout: 5m0s
-        continue-on-error: true
-
-      - name: Trivy Scan Results
-        if: always()
-        run: |
-          FAIL="false"
-          if [ "${{ steps.trivy-backend.outcome }}" = "failure" ]; then
-            echo "::error::Trivy found CRITICAL or HIGH vulns in backend image"
-            FAIL="true"
-          fi
-          if [ "${{ steps.trivy-frontend.outcome }}" = "failure" ]; then
-            echo "::error::Trivy found CRITICAL or HIGH vulns in frontend image"
-            FAIL="true"
-          fi
-          if [ "$FAIL" = "true" ]; then
-            echo "FAIL-FAST: Trivy security scan blocked deployment"
-            exit 1
-          fi
-          echo "Trivy scan clean - no CRITICAL or HIGH vulnerabilities"
