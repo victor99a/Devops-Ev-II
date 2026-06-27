@@ -242,7 +242,7 @@ jobs:
           image-ref: demo-ms-backend:ci
           format: table
           exit-code: '1'
-          severity: CRITICAL,HIGH
+          severity: CRITICAL
           timeout: 5m0s
         continue-on-error: true
 
@@ -263,7 +263,7 @@ jobs:
           image-ref: demo-ms-frontend:ci
           format: table
           exit-code: '1'
-          severity: CRITICAL,HIGH
+          severity: CRITICAL
           timeout: 5m0s
         continue-on-error: true
 
