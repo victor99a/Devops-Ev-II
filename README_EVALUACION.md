@@ -96,9 +96,8 @@ SonarCloud actúa como política activa de calidad en el pipeline CI/CD:
 | Proyecto | Key | Lenguaje | Quality Gate |
 |---|---|---|---|
 | Backend | `victor99a_Devops-Ev-II` | Java 17 / Maven | Cobertura ≥ 80%, 0 bugs blocker, 0 vulnerabilidades critical |
-| Frontend | `victor99a_Devops-Ev-II_Frontend` | TypeScript / React | Cobertura ≥ 70%, 0 bugs blocker, 0 vulnerabilidades critical |
 
-El comando `mvn verify sonar:sonar -Dsonar.qualitygate.wait=true` ejecuta tests, verifica cobertura con JaCoCo y publica resultados a SonarCloud en un solo paso atómico. Para el frontend, `npx sonar-scanner` usa `frontend/sonar-project.properties`. La etapa `quality-gate` consulta la API de SonarCloud y ejecuta `exit 1` si el Quality Gate no pasa, bloqueando el despliegue.
+El comando `mvn verify sonar:sonar -Dsonar.qualitygate.wait=true` ejecuta tests, verifica cobertura con JaCoCo y publica resultados a SonarCloud en un solo paso atómico. La etapa `quality-gate` consulta la API de SonarCloud y ejecuta `exit 1` si el Quality Gate no pasa, bloqueando el despliegue.
 
 ### 1.6 Estrategia de Monitoreo y Observabilidad
 

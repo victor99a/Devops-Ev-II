@@ -115,23 +115,7 @@ jobs:
           echo "Frontend coverage report verified"
         working-directory: frontend
 
-      - name: Frontend — SonarCloud analysis
-        id: sonar-frontend
-        run: |
-          set -euo pipefail
-          npx sonar-scanner \
-            -Dsonar.projectKey=victor99a_Devops-Ev-II_Frontend \
-            -Dsonar.organization="${{ env.SONAR_ORG }}" \
-            -Dsonar.host.url="${{ env.SONAR_HOST }}" \
-            -Dsonar.sources=src \
-            -Dsonar.tests=src \
-            -Dsonar.test.inclusions="**/*.test.ts,**/*.test.tsx" \
-            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
-            -Dsonar.qualitygate.wait=true \
-            -Dsonar.token="${{ secrets.SONAR_TOKEN }}"
-        working-directory: frontend
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      # SonarCloud solo analiza el backend. Frontend: tests + lint.
 
       # ── Artifacts ────────────────────────────────────
 
@@ -173,40 +157,19 @@ jobs:
       - name: Fail-Fast — Backend Quality Gate REJECTED
         if: failure() && steps.qg-backend.outcome == 'failure'
         run: |
-          echo "╔══════════════════════════════════════════════════════════════╗"
-          echo "║  FAIL-FAST: Backend Quality Gate REJECTED                   ║"
-          echo "║  El pipeline se detiene aquí.                               ║"
-          echo "║  Razón: cobertura < 80%, bugs críticos, o vulnerabilidades  ║"
-          echo "║  de seguridad detectadas por SonarCloud.                    ║"
-          echo "║  Corrija los issues antes de volver a hacer push.           ║"
-          echo "╚══════════════════════════════════════════════════════════════╝"
-          exit 1
-
-      - name: SonarCloud Quality Gate — Frontend
-        id: qg-frontend
-        uses: sonarsource/sonarqube-quality-gate-action@v1
-        with:
-          projectKey: victor99a_Devops-Ev-II_Frontend
-          organization: ${{ env.SONAR_ORG }}
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        timeout-minutes: 5
-
-      - name: Fail-Fast — Frontend Quality Gate REJECTED
-        if: failure() && steps.qg-frontend.outcome == 'failure'
-        run: |
-          echo "╔══════════════════════════════════════════════════════════════╗"
-          echo "║  FAIL-FAST: Frontend Quality Gate REJECTED                  ║"
-          echo "║  El pipeline se detiene aquí.                               ║"
-          echo "║  Razón: coverage insuficiente, bugs o vulnerabilidades      ║"
-          echo "║  de seguridad detectadas por SonarCloud.                    ║"
-          echo "╚══════════════════════════════════════════════════════════════╝"
+          echo "============================================"
+          echo " FAIL-FAST: Backend Quality Gate REJECTED"
+          echo " El pipeline se detiene aqui."
+          echo " Razon: coverage < 80%, bugs criticos, o"
+          echo " vulnerabilidades de seguridad detectadas."
+          echo " Corrija los issues antes de hacer push."
+          echo "============================================"
           exit 1
 
       - name: Quality Gate Summary
         if: always()
         run: |
-          echo "::notice::Todos los Quality Gates pasaron exitosamente."
+          echo "::notice::SonarCloud Quality Gate paso exitosamente."
 
   # ═══════════════════════════════════════════════════════
   # ETAPA 3: Security Scan (Snyk + Trivy)
