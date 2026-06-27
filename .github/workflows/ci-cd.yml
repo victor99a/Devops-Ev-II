@@ -116,7 +116,7 @@ jobs:
           fi
         working-directory: frontend
 
-      # SonarCloud solo analiza el backend. Frontend: tests + lint.
+      # SonarCloud solo backend. Fail-fast integrado via qualitygate.wait=true
 
       # ── Artifacts ────────────────────────────────────
 
@@ -140,45 +140,9 @@ jobs:
   # cobertura insuficiente, el pipeline se detiene aquí
   # ═══════════════════════════════════════════════════════
 
-  quality-gate:
-    name: Quality Gate Check (Fail-Fast)
-    needs: test-quality
-    runs-on: ubuntu-latest
-    steps:
-      - name: SonarCloud Quality Gate — Backend
-        id: qg-backend
-        uses: sonarsource/sonarqube-quality-gate-action@v1
-        with:
-          projectKey: victor99a_Devops-Ev-II
-          organization: ${{ env.SONAR_ORG }}
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        timeout-minutes: 5
-
-      - name: Fail-Fast — Backend Quality Gate REJECTED
-        if: failure() && steps.qg-backend.outcome == 'failure'
-        run: |
-          echo "============================================"
-          echo " FAIL-FAST: Backend Quality Gate REJECTED"
-          echo " El pipeline se detiene aqui."
-          echo " Razon: coverage < 80%, bugs criticos, o"
-          echo " vulnerabilidades de seguridad detectadas."
-          echo " Corrija los issues antes de hacer push."
-          echo "============================================"
-          exit 1
-
-      - name: Quality Gate Summary
-        if: always()
-        run: |
-          echo "::notice::SonarCloud Quality Gate paso exitosamente."
-
-  # ═══════════════════════════════════════════════════════
-  # ETAPA 3: Security Scan (Snyk + Trivy)
-  # ═══════════════════════════════════════════════════════
-
   security-scan:
     name: Security Scan (Snyk + Trivy)
-    needs: quality-gate
+    needs: test-quality
     runs-on: ubuntu-latest
     if: github.event_name != 'pull_request'
     steps:
