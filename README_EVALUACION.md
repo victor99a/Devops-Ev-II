@@ -70,7 +70,7 @@ La arquitectura integra las siguientes herramientas para permitir **toma de deci
 
 | Categoría | Herramienta | Qué mide | Decisión informada |
 |---|---|---|---|
-| **Calidad de Código** | SonarCloud + JaCoCo | Cobertura de pruebas, bugs, code smells, vulnerabilidades | ¿El código cumple el umbral mínimo del 80% de cobertura? ¿Hay bugs críticos que impidan el despliegue? |
+| **Calidad de Código** | SonarCloud + JaCoCo + Vitest | Cobertura de pruebas, bugs, code smells, vulnerabilidades | ¿El código cumple el umbral mínimo del 80% de cobertura? ¿Hay bugs críticos que impidan el despliegue? |
 | **Seguridad** | Snyk + Trivy | Vulnerabilidades en dependencias e imágenes Docker | ¿Las dependencias tienen CVEs de severidad High/Critical? ¿La imagen Docker contiene binarios vulnerables? |
 | **CI/CD** | GitHub Actions + AWS ECR + EC2 | Tiempo de despliegue, tasa de éxito/fallo de pipelines | ¿El pipeline está ralentizando los despliegues? ¿Hay fallos recurrentes que requieran ajustes? |
 | **Monitoreo** | Prometheus + Micrometer | Uso de CPU/Memoria, tasa de errores HTTP, latencia, conexiones DB | ¿El backend necesita más réplicas? ¿Hay memory leaks? ¿La latencia P99 supera el SLA? |
@@ -89,7 +89,18 @@ El pipeline implementa **tres puntos de control Fail-Fast** que bloquean el desp
 
 Adicionalmente, cada paso crítico usa `set -euo pipefail` para que cualquier comando que falle (curl, SSH, etc.) detenga el flujo inmediatamente.
 
-### 1.5 Estrategia de Monitoreo y Observabilidad
+### 1.5 SonarCloud — Cumplimiento Normativo Automatizado
+
+SonarCloud actúa como política activa de calidad en el pipeline CI/CD:
+
+| Proyecto | Key | Lenguaje | Quality Gate |
+|---|---|---|---|
+| Backend | `victor99a_Devops-Ev-II` | Java 17 / Maven | Cobertura ≥ 80%, 0 bugs blocker, 0 vulnerabilidades critical |
+| Frontend | `victor99a_Devops-Ev-II_Frontend` | TypeScript / React | Cobertura ≥ 70%, 0 bugs blocker, 0 vulnerabilidades critical |
+
+El comando `mvn verify sonar:sonar -Dsonar.qualitygate.wait=true` ejecuta tests, verifica cobertura con JaCoCo y publica resultados a SonarCloud en un solo paso atómico. Para el frontend, `npx sonar-scanner` usa `frontend/sonar-project.properties`. La etapa `quality-gate` consulta la API de SonarCloud y ejecuta `exit 1` si el Quality Gate no pasa, bloqueando el despliegue.
+
+### 1.6 Estrategia de Monitoreo y Observabilidad
 
 - **Backend:** Expone métricas JVM, HTTP y de base de datos en `/actuator/prometheus` vía Micrometer + Prometheus registry.
 - **Frontend:** Métricas de Nginx expuestas vía sidecar `nginx-prometheus-exporter` en puerto 9113.

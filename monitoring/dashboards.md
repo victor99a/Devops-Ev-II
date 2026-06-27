@@ -209,3 +209,59 @@ filter @logStream like /backend/
 | **Greeting-Service-Overview** | CPU/Memoria promedio de backend + frontend, RPS, Tasa de errores |
 | **Greeting-Service-DB** | Conexiones HikariCP, latencia de queries, uso de storage PostgreSQL |
 | **Greeting-Service-CICD** | Tiempo de deploy, cobertura de pruebas, fallos de pipeline |
+
+---
+
+## 8. Cobertura de Código — SonarCloud
+
+### Integración con el Pipeline CI/CD
+
+SonarCloud está integrado en la etapa `test-quality` del pipeline con `qualitygate.wait=true`. Los resultados de cobertura se publican automáticamente:
+
+| Proyecto | SonarCloud Key | Fuente de cobertura |
+|---|---|---|
+| Backend (Java/Maven) | `victor99a_Devops-Ev-II` | JaCoCo XML (`target/site/jacoco/jacoco.xml`) |
+| Frontend (React/TS) | `victor99a_Devops-Ev-II_Frontend` | LCOV (`frontend/coverage/lcov.info`) |
+
+### Consulta de Cobertura vía API de SonarCloud
+
+```bash
+# Backend
+curl -s -u "$SONAR_TOKEN:" \
+  "https://sonarcloud.io/api/measures/component?component=victor99a_Devops-Ev-II&metricKeys=coverage,bugs,vulnerabilities,code_smells"
+
+# Frontend
+curl -s -u "$SONAR_TOKEN:" \
+  "https://sonarcloud.io/api/measures/component?component=victor99a_Devops-Ev-II_Frontend&metricKeys=coverage,bugs,vulnerabilities,code_smells"
+```
+
+### Visualización en Grafana
+
+Para mostrar la cobertura en un dashboard de Grafana, configurar el datasource **SonarQube**:
+
+1. Instalar el plugin de Grafana: `grafana-cli plugins install briangann-sonarqube-datasource`
+2. Configurar el datasource con URL `https://sonarcloud.io` y el token de SonarCloud
+3. Agregar un panel **Gauge** con query:
+   ```json
+   {
+     "projectKey": "victor99a_Devops-Ev-II",
+     "metricKeys": "coverage"
+   }
+   ```
+
+### Thresholds de Quality Gate (Fail-Fast)
+
+| Métrica | Umbral | Acción si falla |
+|---|---|---|
+| Coverage | < 80% | Pipeline `exit 1` — no se despliega |
+| Bugs | ≥ 1 Blocker | Pipeline `exit 1` — no se despliega |
+| Vulnerabilities | ≥ 1 Critical | Pipeline `exit 1` — no se despliega |
+| Code Smells | No bloqueante | Advertencia en logs del pipeline |
+
+### Badge de Cobertura
+
+```
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=victor99a_Devops-Ev-II&metric=coverage)](https://sonarcloud.io/dashboard?id=victor99a_Devops-Ev-II)
+```
+
+Este badge puede incluirse en el `README.md` del repositorio para visibilidad inmediata del estado de calidad.

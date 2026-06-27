@@ -1,4 +1,4 @@
-name: CI/CD Pipeline — EP3 Full-Stack (EC2)
+name: CI/CD Pipeline — EP3 Full-Stack (EC2 + Docker Compose)
 
 on:
   push:
@@ -12,6 +12,8 @@ env:
   AWS_REGION: us-east-1
   ECR_BACKEND: demo-ms-backend
   ECR_FRONTEND: demo-ms-frontend
+  SONAR_ORG: victor99a
+  SONAR_HOST: https://sonarcloud.io
 
 permissions:
   id-token: write
@@ -23,15 +25,20 @@ defaults:
 
 jobs:
 
+  # ═══════════════════════════════════════════════════════
+  # ETAPA 1: Test & Quality (Backend + Frontend)
+  # Integra SonarCloud con qualitygate.wait=true
+  # ═══════════════════════════════════════════════════════
+
   test-quality:
     name: Test & Quality (Backend + Frontend)
     runs-on: ubuntu-latest
-    outputs:
-      backend-jar: target/demo-ms-1.0.0.jar
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      # ── Backend (Java / Maven) ──────────────────────
 
       - name: Set up JDK ${{ env.JAVA_VERSION }}
         uses: actions/setup-java@v5
@@ -40,14 +47,24 @@ jobs:
           distribution: temurin
           cache: maven
 
-      # ── Backend ──────────────────────
-
-      - name: Backend — Maven verify (tests + JaCoCo)
+      - name: Backend — Maven verify (tests + JaCoCo + SonarCloud)
         id: backend-tests
         run: |
           set -euo pipefail
-          mvn verify -B
+          mvn verify sonar:sonar \
+            -B \
+            -Dsonar.projectKey=victor99a_Devops-Ev-II \
+            -Dsonar.organization="${{ env.SONAR_ORG }}" \
+            -Dsonar.host.url="${{ env.SONAR_HOST }}" \
+            -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \
+            -Dsonar.java.binaries=target/classes \
+            -Dsonar.sources=src/main/java \
+            -Dsonar.tests=src/test/java \
+            -Dsonar.qualitygate.wait=true \
+            -Dsonar.token="${{ secrets.SONAR_TOKEN }}"
         working-directory: .
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
       - name: Backend — Verify JaCoCo coverage threshold
         run: |
@@ -58,24 +75,8 @@ jobs:
             exit 1
           fi
           echo "JaCoCo report verified"
-        working-directory: .
 
-      - name: Backend — SonarCloud analysis
-        id: sonar-backend
-        run: |
-          set -euo pipefail
-          mvn sonar:sonar \
-            -Dsonar.projectKey=demo-ms-backend \
-            -Dsonar.organization="${{ vars.SONAR_ORG }}" \
-            -Dsonar.host.url=https://sonarcloud.io \
-            -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \
-            -Dsonar.qualitygate.wait=true \
-            -B
-        working-directory: .
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-
-      # ── Frontend ─────────────────────
+      # ── Frontend (React / TypeScript) ────────────────
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -104,7 +105,7 @@ jobs:
           npm test -- --coverage --reporter=verbose
         working-directory: frontend
 
-      - name: Frontend — Verify coverage report exists
+      - name: Frontend — Verify coverage report
         run: |
           set -euo pipefail
           if [ ! -f "coverage/lcov.info" ]; then
@@ -119,19 +120,20 @@ jobs:
         run: |
           set -euo pipefail
           npx sonar-scanner \
-            -Dsonar.projectKey=demo-ms-frontend \
-            -Dsonar.organization="${{ vars.SONAR_ORG }}" \
-            -Dsonar.host.url=https://sonarcloud.io \
+            -Dsonar.projectKey=victor99a_Devops-Ev-II_Frontend \
+            -Dsonar.organization="${{ env.SONAR_ORG }}" \
+            -Dsonar.host.url="${{ env.SONAR_HOST }}" \
             -Dsonar.sources=src \
             -Dsonar.tests=src \
             -Dsonar.test.inclusions="**/*.test.ts,**/*.test.tsx" \
             -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
-            -Dsonar.qualitygate.wait=true
+            -Dsonar.qualitygate.wait=true \
+            -Dsonar.token="${{ secrets.SONAR_TOKEN }}"
         working-directory: frontend
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
-      # ── Artifacts ────────────────────
+      # ── Artifacts ────────────────────────────────────
 
       - name: Upload backend coverage report
         if: always()
@@ -147,6 +149,12 @@ jobs:
           name: frontend-coverage
           path: frontend/coverage
 
+  # ═══════════════════════════════════════════════════════
+  # ETAPA 2: Quality Gate Check (FAIL-FAST)
+  # Si SonarCloud detecta bugs, vulnerabilidades o
+  # cobertura insuficiente, el pipeline se detiene aquí
+  # ═══════════════════════════════════════════════════════
+
   quality-gate:
     name: Quality Gate Check (Fail-Fast)
     needs: test-quality
@@ -156,48 +164,53 @@ jobs:
         id: qg-backend
         uses: sonarsource/sonarqube-quality-gate-action@v1
         with:
-          projectKey: demo-ms-backend
-          organization: ${{ vars.SONAR_ORG }}
+          projectKey: victor99a_Devops-Ev-II
+          organization: ${{ env.SONAR_ORG }}
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         timeout-minutes: 5
 
-      - name: Fail on backend quality gate failure
+      - name: Fail-Fast — Backend Quality Gate REJECTED
         if: failure() && steps.qg-backend.outcome == 'failure'
         run: |
-          echo "============================================"
-          echo " FAIL-FAST: Backend Quality Gate REJECTED"
-          echo " El pipeline se detiene aquí."
-          echo " Razón: cobertura < 80%, bugs críticos,"
-          echo " o vulnerabilidades de seguridad detectadas."
-          echo "============================================"
+          echo "╔══════════════════════════════════════════════════════════════╗"
+          echo "║  FAIL-FAST: Backend Quality Gate REJECTED                   ║"
+          echo "║  El pipeline se detiene aquí.                               ║"
+          echo "║  Razón: cobertura < 80%, bugs críticos, o vulnerabilidades  ║"
+          echo "║  de seguridad detectadas por SonarCloud.                    ║"
+          echo "║  Corrija los issues antes de volver a hacer push.           ║"
+          echo "╚══════════════════════════════════════════════════════════════╝"
           exit 1
 
       - name: SonarCloud Quality Gate — Frontend
         id: qg-frontend
         uses: sonarsource/sonarqube-quality-gate-action@v1
         with:
-          projectKey: demo-ms-frontend
-          organization: ${{ vars.SONAR_ORG }}
+          projectKey: victor99a_Devops-Ev-II_Frontend
+          organization: ${{ env.SONAR_ORG }}
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         timeout-minutes: 5
 
-      - name: Fail on frontend quality gate failure
+      - name: Fail-Fast — Frontend Quality Gate REJECTED
         if: failure() && steps.qg-frontend.outcome == 'failure'
         run: |
-          echo "============================================"
-          echo " FAIL-FAST: Frontend Quality Gate REJECTED"
-          echo " El pipeline se detiene aquí."
-          echo " Razón: cobertura insuficiente, bugs o"
-          echo " vulnerabilidades de seguridad detectadas."
-          echo "============================================"
+          echo "╔══════════════════════════════════════════════════════════════╗"
+          echo "║  FAIL-FAST: Frontend Quality Gate REJECTED                  ║"
+          echo "║  El pipeline se detiene aquí.                               ║"
+          echo "║  Razón: coverage insuficiente, bugs o vulnerabilidades      ║"
+          echo "║  de seguridad detectadas por SonarCloud.                    ║"
+          echo "╚══════════════════════════════════════════════════════════════╝"
           exit 1
 
       - name: Quality Gate Summary
         if: always()
         run: |
-          echo "::notice::Todos los Quality Gates pasaron exitosamente. Procediendo con security scan."
+          echo "::notice::Todos los Quality Gates pasaron exitosamente."
+
+  # ═══════════════════════════════════════════════════════
+  # ETAPA 3: Security Scan (Snyk + Trivy)
+  # ═══════════════════════════════════════════════════════
 
   security-scan:
     name: Security Scan (Snyk + Trivy)
@@ -206,8 +219,6 @@ jobs:
     if: github.event_name != 'pull_request'
     steps:
       - uses: actions/checkout@v4
-
-      # ── Snyk: Dependencies ───────────
 
       - name: Set up JDK ${{ env.JAVA_VERSION }}
         uses: actions/setup-java@v5
@@ -247,7 +258,7 @@ jobs:
                   count += len(item.get('vulnerabilities', []))
           print(count)
           " 2>/dev/null || echo 0)
-            echo "Snyk found ${VULN_COUNT} high/critical vulnerabilities in backend dependencies"
+            echo "Snyk found ${VULN_COUNT} high/critical vulnerabilities"
           fi
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
@@ -269,6 +280,10 @@ jobs:
           name: snyk-report
           path: snyk-backend-report.json
 
+  # ═══════════════════════════════════════════════════════
+  # ETAPA 4: Build, Scan & Push to ECR
+  # ═══════════════════════════════════════════════════════
+
   build-push:
     name: Build, Scan & Push to ECR
     needs: security-scan
@@ -289,8 +304,6 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
-
-      # ── Backend image ────────────────
 
       - name: Build backend image (no push yet)
         uses: docker/build-push-action@v6
@@ -327,8 +340,6 @@ jobs:
         with:
           name: trivy-backend-sbom
           path: trivy-backend-sbom.json
-
-      # ── Frontend image ───────────────
 
       - name: Build frontend image (no push yet)
         uses: docker/build-push-action@v6
@@ -369,13 +380,11 @@ jobs:
         if: always()
         run: |
           if [ "${{ steps.trivy-backend.outcome }}" = "failure" ]; then
-            echo "::error::FAIL-FAST: Trivy detected CRITICAL or HIGH vulnerabilities in backend image. Pipeline blocked."
+            echo "::error::FAIL-FAST: Trivy found CRITICAL or HIGH vulns in backend"
           fi
           if [ "${{ steps.trivy-frontend.outcome }}" = "failure" ]; then
-            echo "::error::FAIL-FAST: Trivy detected CRITICAL or HIGH vulnerabilities in frontend image. Pipeline blocked."
+            echo "::error::FAIL-FAST: Trivy found CRITICAL or HIGH vulns in frontend"
           fi
-
-      # ── Push to ECR (only if Trivy passed) ──
 
       - name: Push backend image to ECR
         if: steps.trivy-backend.outcome != 'failure' && steps.trivy-frontend.outcome != 'failure'
@@ -401,6 +410,10 @@ jobs:
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # ═══════════════════════════════════════════════════════
+  # ETAPA 5: Deploy to EC2 (Docker Compose)
+  # ═══════════════════════════════════════════════════════
 
   deploy-ec2:
     name: Deploy to EC2 (Docker Compose)
@@ -447,14 +460,14 @@ jobs:
             git pull origin main
 
             echo "=== Stopping old containers ==="
-            docker compose down --remove-orphans || true
+            sudo docker compose down --remove-orphans || true
 
             echo "=== Building and starting services ==="
-            docker compose up -d --build
+            sudo docker compose up -d --build
 
             echo "=== Waiting for health checks ==="
             sleep 20
-            docker compose ps
+            sudo docker compose ps
 
             echo "=== Verifying services ==="
             curl -fsS -o /dev/null -w "Frontend: HTTP %{http_code}\n" http://localhost:80/health
@@ -486,6 +499,10 @@ jobs:
             --region "${{ env.AWS_REGION }}" \
             --dimensions "Pipeline=EP3,Service=FullStack" || true
           echo "Deploy duration: ${DEPLOY_DURATION}s"
+
+  # ═══════════════════════════════════════════════════════
+  # ETAPA 6: Smoke Tests
+  # ═══════════════════════════════════════════════════════
 
   smoke-tests:
     name: Smoke Tests

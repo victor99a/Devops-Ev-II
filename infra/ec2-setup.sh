@@ -19,11 +19,12 @@ systemctl enable docker
 systemctl start docker
 usermod -aG docker ec2-user
 
-# ── 3. Instalar Docker Compose standalone ──────────────
+# ── 3. Instalar Docker Compose (CLI plugin) ──────────
 echo "[3/6] Installing Docker Compose..."
-curl -sL "https://github.com/docker/compose/releases/download/v2.27.0/docker-compose-$(uname -s)-$(uname -m)" \
-  -o /usr/local/bin/docker-compose
-chmod +x /usr/local/bin/docker-compose
+sudo mkdir -p /usr/lib/docker/cli-plugins
+sudo curl -sL "https://github.com/docker/compose/releases/download/v2.27.0/docker-compose-linux-x86_64" \
+  -o /usr/lib/docker/cli-plugins/docker-compose
+sudo chmod +x /usr/lib/docker/cli-plugins/docker-compose
 
 # ── 4. Clonar repositorio ──────────────────────────────
 echo "[4/6] Cloning repository..."
@@ -36,7 +37,7 @@ su - ec2-user -c "
 echo "[5/6] Starting services..."
 su - ec2-user -c "
   cd /home/ec2-user/Devops-Ev-II
-  docker compose up -d --build
+  sudo docker compose up -d --build
 "
 
 # ── 6. Instalar CloudWatch Agent ───────────────────────

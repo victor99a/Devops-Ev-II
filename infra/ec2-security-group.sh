@@ -6,7 +6,7 @@ set -euo pipefail
 
 SG_NAME="greeting-ec2-sg"
 REGION="${AWS_REGION:-us-east-1}"
-DESCRIPTION="Greeting Service EP3 — Frontend (80), API (8080), SSH (22)"
+DESCRIPTION="Greeting Service EP3 - Frontend(80) API(8080) SSH(22)"
 
 # Verificar si el SG ya existe
 EXISTING=$(aws ec2 describe-security-groups \
