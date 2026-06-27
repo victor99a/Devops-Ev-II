@@ -221,20 +221,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-region: ${{ env.AWS_REGION }}
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE }}
-
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Build backend image (no push yet)
+      - name: Build backend image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -251,26 +241,11 @@ jobs:
         with:
           image-ref: demo-ms-backend:ci
           format: table
-          exit-code: 1
+          exit-code: '1'
           severity: CRITICAL,HIGH
-          timeout: 5m
+          timeout: 5m0s
 
-      - name: Trivy — Generate backend SBOM
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: demo-ms-backend:ci
-          format: cyclonedx
-          output: trivy-backend-sbom.json
-        continue-on-error: true
-
-      - name: Upload backend SBOM
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: trivy-backend-sbom
-          path: trivy-backend-sbom.json
-
-      - name: Build frontend image (no push yet)
+      - name: Build frontend image
         uses: docker/build-push-action@v6
         with:
           context: ./frontend
@@ -286,231 +261,16 @@ jobs:
         with:
           image-ref: demo-ms-frontend:ci
           format: table
-          exit-code: 1
+          exit-code: '1'
           severity: CRITICAL,HIGH
-          timeout: 5m
-
-      - name: Trivy — Generate frontend SBOM
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: demo-ms-frontend:ci
-          format: cyclonedx
-          output: trivy-frontend-sbom.json
-        continue-on-error: true
-
-      - name: Upload frontend SBOM
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: trivy-frontend-sbom
-          path: trivy-frontend-sbom.json
+          timeout: 5m0s
 
       - name: Trivy Scan Results
         if: always()
         run: |
           if [ "${{ steps.trivy-backend.outcome }}" = "failure" ]; then
-            echo "::error::FAIL-FAST: Trivy found CRITICAL or HIGH vulns in backend"
+            echo "::error::Trivy CRITICAL/HIGH vuln in backend"
           fi
           if [ "${{ steps.trivy-frontend.outcome }}" = "failure" ]; then
-            echo "::error::FAIL-FAST: Trivy found CRITICAL or HIGH vulns in frontend"
+            echo "::error::Trivy CRITICAL/HIGH vuln in frontend"
           fi
-
-      - name: Push backend image to ECR
-        if: steps.trivy-backend.outcome != 'failure' && steps.trivy-frontend.outcome != 'failure'
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile
-          push: true
-          tags: |
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BACKEND }}:latest
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BACKEND }}:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Push frontend image to ECR
-        if: steps.trivy-backend.outcome != 'failure' && steps.trivy-frontend.outcome != 'failure'
-        uses: docker/build-push-action@v6
-        with:
-          context: ./frontend
-          push: true
-          tags: |
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND }}:latest
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND }}:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  # ═══════════════════════════════════════════════════════
-  # ETAPA 5: Deploy to EC2 (Docker Compose)
-  # ═══════════════════════════════════════════════════════
-
-  deploy-ec2:
-    name: Deploy to EC2 (Docker Compose)
-    needs: build-push
-    runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request'
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-region: ${{ env.AWS_REGION }}
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE }}
-
-      - name: Get EC2 public IP
-        id: ec2-ip
-        run: |
-          set -euo pipefail
-          IP=$(aws ec2 describe-instances \
-            --region "${{ env.AWS_REGION }}" \
-            --filters "Name=tag:Name,Values=greeting-ec2-ep3" "Name=instance-state-name,Values=running" \
-            --query 'Reservations[0].Instances[0].PublicIpAddress' \
-            --output text)
-          if [ -z "$IP" ] || [ "$IP" = "None" ]; then
-            echo "::error::No EC2 instance found with tag Name=greeting-ec2-ep3"
-            exit 1
-          fi
-          echo "ip=$IP" >> $GITHUB_OUTPUT
-          echo "EC2 public IP: $IP"
-
-      - name: Deploy via SSH (Docker Compose)
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ steps.ec2-ip.outputs.ip }}
-          username: ec2-user
-          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-          script: |
-            set -euo pipefail
-            cd /home/ec2-user/Devops-Ev-II
-
-            echo "=== Pulling latest code ==="
-            git checkout main
-            git pull origin main
-
-            echo "=== Stopping old containers ==="
-            sudo docker compose down --remove-orphans || true
-
-            echo "=== Building and starting services ==="
-            sudo docker compose up -d --build
-
-            echo "=== Waiting for health checks ==="
-            sleep 20
-            sudo docker compose ps
-
-            echo "=== Verifying services ==="
-            curl -fsS -o /dev/null -w "Frontend: HTTP %{http_code}\n" http://localhost:80/health
-            curl -fsS http://localhost:8080/actuator/health | python3 -m json.tool
-            echo "All services healthy"
-
-      - name: Verify services from GitHub Actions
-        run: |
-          set -euo pipefail
-          IP="${{ steps.ec2-ip.outputs.ip }}"
-          echo "Verifying frontend..."
-          curl -fsS -o /dev/null -w "Frontend: HTTP %{http_code}\n" "http://$IP/health"
-          echo "Verifying backend..."
-          curl -fsS "http://$IP:8080/actuator/health" | python3 -m json.tool
-          echo "Verifying API..."
-          curl -fsS -X POST "http://$IP/api/v1/greetings?name=CI-CD-Deploy" | grep "Hola DevOps V4"
-          echo "Verifying Prometheus..."
-          curl -fsS "http://$IP:8080/actuator/prometheus" | grep -q "jvm_memory_used_bytes" && echo "Metrics OK"
-
-      - name: Publish deploy metrics to CloudWatch
-        run: |
-          DEPLOY_END=$(date +%s)
-          DEPLOY_DURATION=$(( DEPLOY_END - $(date -d "${{ github.run_started_at }}" +%s) ))
-          aws cloudwatch put-metric-data \
-            --namespace "GreetingService/CICD" \
-            --metric-name "DeployDurationSeconds" \
-            --value "$DEPLOY_DURATION" \
-            --unit Seconds \
-            --region "${{ env.AWS_REGION }}" \
-            --dimensions "Pipeline=EP3,Service=FullStack" || true
-          echo "Deploy duration: ${DEPLOY_DURATION}s"
-
-  # ═══════════════════════════════════════════════════════
-  # ETAPA 6: Smoke Tests
-  # ═══════════════════════════════════════════════════════
-
-  smoke-tests:
-    name: Smoke Tests
-    needs: deploy-ec2
-    runs-on: ubuntu-latest
-    steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-region: ${{ env.AWS_REGION }}
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE }}
-
-      - name: Get EC2 public IP
-        id: ec2-ip
-        run: |
-          set -euo pipefail
-          IP=$(aws ec2 describe-instances \
-            --region "${{ env.AWS_REGION }}" \
-            --filters "Name=tag:Name,Values=greeting-ec2-ep3" "Name=instance-state-name,Values=running" \
-            --query 'Reservations[0].Instances[0].PublicIpAddress' \
-            --output text)
-          echo "ip=$IP" >> $GITHUB_OUTPUT
-          echo "Target EC2: $IP"
-
-      - name: Smoke — Frontend health
-        id: smoke-frontend
-        run: |
-          curl -fsS -o /dev/null -w "%{http_code}" http://${{ steps.ec2-ip.outputs.ip }}/health | grep -q 200 || {
-            echo "::error::SMOKE FAILED: Frontend /health not 200"
-            exit 1
-          }
-
-      - name: Smoke — Backend health
-        id: smoke-backend
-        run: |
-          curl -fsS http://${{ steps.ec2-ip.outputs.ip }}:8080/actuator/health | grep -q UP || {
-            echo "::error::SMOKE FAILED: Backend /actuator/health not UP"
-            exit 1
-          }
-
-      - name: Smoke — Create greeting
-        id: smoke-create
-        run: |
-          curl -fsS -X POST "http://${{ steps.ec2-ip.outputs.ip }}/api/v1/greetings?name=EP3-Smoke" | grep -q "Hola DevOps V4" || {
-            echo "::error::SMOKE FAILED: POST /api/v1/greetings unexpected response"
-            exit 1
-          }
-          echo "SMOKE PASSED: Greeting created"
-
-      - name: Smoke — Prometheus metrics
-        id: smoke-metrics
-        run: |
-          curl -fsS http://${{ steps.ec2-ip.outputs.ip }}:8080/actuator/prometheus | grep -q "jvm_memory_used_bytes" || {
-            echo "::error::SMOKE FAILED: /actuator/prometheus not exposing metrics"
-            exit 1
-          }
-          echo "SMOKE PASSED: Prometheus metrics exposed"
-
-      - name: Smoke — Frontend serves HTML
-        id: smoke-html
-        run: |
-          curl -fsS http://${{ steps.ec2-ip.outputs.ip }}/ | grep -q "<title>" || {
-            echo "::error::SMOKE FAILED: Frontend not serving HTML"
-            exit 1
-          }
-          echo "SMOKE PASSED: Frontend serving HTML"
-
-      - name: Publish smoke test metrics to CloudWatch
-        if: always()
-        run: |
-          PASS_COUNT=0
-          if [ "${{ steps.smoke-frontend.outcome }}" = "success" ]; then PASS_COUNT=$((PASS_COUNT + 1)); fi
-          if [ "${{ steps.smoke-backend.outcome }}" = "success" ]; then PASS_COUNT=$((PASS_COUNT + 1)); fi
-          if [ "${{ steps.smoke-create.outcome }}" = "success" ]; then PASS_COUNT=$((PASS_COUNT + 1)); fi
-          if [ "${{ steps.smoke-metrics.outcome }}" = "success" ]; then PASS_COUNT=$((PASS_COUNT + 1)); fi
-          if [ "${{ steps.smoke-html.outcome }}" = "success" ]; then PASS_COUNT=$((PASS_COUNT + 1)); fi
-          aws cloudwatch put-metric-data \
-            --namespace "GreetingService/CICD" \
-            --metric-name "SmokeTestsPassed" \
-            --value "$PASS_COUNT" \
-            --unit Count \
-            --region "${{ env.AWS_REGION }}"
