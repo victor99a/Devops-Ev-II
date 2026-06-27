@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-service
+  namespace: greeting-app
+  labels:
+    app: frontend
+    app.kubernetes.io/name: greeting-service-frontend
+    app.kubernetes.io/part-of: greeting-service
+    app.kubernetes.io/component: ui
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9113"
+    prometheus.io/path: "/metrics"
+    prometheus.io/scheme: "http"
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: http
+      protocol: TCP
+      name: http
+    - port: 9113
+      targetPort: metrics
+      protocol: TCP
+      name: metrics
+  selector:
+    app: frontend

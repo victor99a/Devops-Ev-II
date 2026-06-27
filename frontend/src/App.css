@@ -1,0 +1,301 @@
+/* ═══════════════════════════════════════════
+   Dark Premium Theme — Greeting Service
+   ═══════════════════════════════════════════ */
+
+:root {
+  --bg-deep: #08080c;
+  --bg-surface: #121218;
+  --bg-card: #18181f;
+  --border-subtle: #25252e;
+  --border-accent: #3a3a45;
+  --text-primary: #e8e8ee;
+  --text-secondary: #9898a6;
+  --text-muted: #5c5c6a;
+  --accent-silver: #b8b8c8;
+  --accent-bright: #d4d4e0;
+  --green-soft: #4ade80;
+  --red-soft: #f87171;
+  --red-glow: rgba(248, 113, 113, 0.12);
+  --green-glow: rgba(74, 222, 128, 0.10);
+  --radius: 12px;
+  --radius-sm: 8px;
+  --transition: 200ms ease;
+}
+
+/* ── Layout ──────────────────────────── */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+  padding: 4rem 1.5rem 2rem;
+  background: var(--bg-deep);
+  background-image:
+    radial-gradient(ellipse at 50% 0%, rgba(180, 180, 200, 0.03) 0%, transparent 60%),
+    radial-gradient(ellipse at 85% 100%, rgba(180, 180, 200, 0.02) 0%, transparent 50%);
+}
+
+.header {
+  text-align: center;
+  margin-bottom: 3rem;
+}
+
+.title {
+  font-size: 2.25rem;
+  font-weight: 300;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.title-accent {
+  font-weight: 600;
+  color: var(--accent-bright);
+}
+
+.subtitle {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-top: 0.4rem;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.main {
+  width: 100%;
+  max-width: 520px;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* ── Card ────────────────────────────── */
+
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  padding: 1.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  transition: border-color var(--transition);
+}
+
+.card:focus-within {
+  border-color: var(--border-accent);
+}
+
+/* ── Input ───────────────────────────── */
+
+.input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.input {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 0.7rem 0.9rem;
+  font-size: 0.95rem;
+  font-family: 'Inter', sans-serif;
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+.input::placeholder {
+  color: var(--text-muted);
+}
+
+.input:focus {
+  border-color: var(--accent-silver);
+  box-shadow: 0 0 0 3px rgba(184, 184, 200, 0.08);
+}
+
+.input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Button ──────────────────────────── */
+
+.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.75rem 1.5rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  font-family: 'Inter', sans-serif;
+  letter-spacing: 0.02em;
+  color: var(--bg-deep);
+  background: var(--accent-bright);
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--transition), transform var(--transition),
+    box-shadow var(--transition);
+}
+
+.btn:hover:not(:disabled) {
+  background: #e8e8f0;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px rgba(180, 180, 200, 0.15);
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.btn--loading {
+  background: var(--border-accent);
+  color: var(--text-secondary);
+}
+
+/* ── Spinner ─────────────────────────── */
+
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--text-muted);
+  border-top-color: var(--accent-bright);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ── Result ──────────────────────────── */
+
+.result {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--green-soft);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  box-shadow: 0 0 30px var(--green-glow);
+}
+
+.result-badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--green-soft);
+  background: rgba(74, 222, 128, 0.08);
+  padding: 0.25rem 0.6rem;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.result-json {
+  font-size: 0.83rem;
+  color: var(--text-primary);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ── Error ───────────────────────────── */
+
+.error {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--red-soft);
+  border-radius: var(--radius);
+  padding: 1.25rem 1.5rem;
+  box-shadow: 0 0 30px var(--red-glow);
+}
+
+.error-icon {
+  width: 20px;
+  height: 20px;
+  color: var(--red-soft);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.error-text {
+  font-size: 0.88rem;
+  color: var(--red-soft);
+  line-height: 1.5;
+}
+
+/* ── Animations ──────────────────────── */
+
+.fade-in {
+  animation: fadeIn 0.4s ease both;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ── Footer ──────────────────────────── */
+
+.footer {
+  margin-top: auto;
+  padding-top: 3rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  letter-spacing: 0.03em;
+}
+
+.footer-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-silver);
+  opacity: 0.5;
+}
+
+/* ── Responsive ─────────────────────── */
+
+@media (max-width: 540px) {
+  .app {
+    padding: 2rem 1rem 1.5rem;
+  }
+  .title {
+    font-size: 1.6rem;
+  }
+  .card {
+    padding: 1.25rem;
+  }
+}

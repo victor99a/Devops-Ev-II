@@ -1,0 +1,53 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: greeting-backend
+  namespace: greeting-app
+  labels:
+    app: backend
+    app.kubernetes.io/part-of: greeting-service
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: backend
+  namespaceSelector:
+    matchNames:
+      - greeting-app
+  endpoints:
+    - port: http
+      path: /actuator/prometheus
+      interval: 30s
+      scrapeTimeout: 10s
+      honorLabels: true
+  targetLabels:
+    - app.kubernetes.io/name
+    - app.kubernetes.io/part-of
+    - app.kubernetes.io/component
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: greeting-frontend
+  namespace: greeting-app
+  labels:
+    app: frontend
+    app.kubernetes.io/part-of: greeting-service
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: frontend
+  namespaceSelector:
+    matchNames:
+      - greeting-app
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      honorLabels: true
+  targetLabels:
+    - app.kubernetes.io/name
+    - app.kubernetes.io/part-of
+    - app.kubernetes.io/component

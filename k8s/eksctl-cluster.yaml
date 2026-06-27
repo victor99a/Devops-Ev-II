@@ -1,0 +1,44 @@
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+autoModeConfig:
+  enabled: false
+
+metadata:
+  name: greeting-cluster
+  region: us-east-1
+  version: "1.32"
+  tags:
+    Environment: EP3
+    Project: greeting-service
+
+iam:
+  serviceRoleARN: "arn:aws:iam::958910022694:role/c207149a5271551l15412679t1w958910-LabEksClusterRole-YhVTGpQYVSiQ"
+
+vpc:
+  id: vpc-00a6019b23fce4fd1
+  subnets:
+    public:
+      us-east-1a: { id: subnet-0908be465e5aa3552 }
+      us-east-1b: { id: subnet-0f5f7d6cc665d7160 }
+      us-east-1c: { id: subnet-0fb9151822c853c40 }
+      us-east-1d: { id: subnet-03787b00953d72691 }
+
+managedNodeGroups:
+  - name: greeting-nodes
+    instanceType: t3.medium
+    desiredCapacity: 2
+    minSize: 1
+    maxSize: 3
+    privateNetworking: false
+    volumeSize: 20
+    subnets:
+      - subnet-0908be465e5aa3552
+      - subnet-0f5f7d6cc665d7160
+      - subnet-0fb9151822c853c40
+      - subnet-03787b00953d72691
+    iam:
+      instanceRoleARN: "arn:aws:iam::958910022694:role/c207149a5271551l15412679t1w958910022-LabEksNodeRole-YQEFKP24vfFI"
+    tags:
+      Environment: EP3
+      Project: greeting-service

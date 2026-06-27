@@ -1,0 +1,625 @@
+name: CI/CD Pipeline — EP3 Full-Stack
+
+on:
+  push:
+    branches: [main, develop, "feature/**"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  JAVA_VERSION: "21"
+  AWS_REGION: us-east-1
+  ECR_BACKEND: demo-ms-backend
+  ECR_FRONTEND: demo-ms-frontend
+
+permissions:
+  id-token: write
+  contents: read
+
+defaults:
+  run:
+    shell: bash -euo pipefail {0}
+
+jobs:
+
+  test-quality:
+    name: Test & Quality (Backend + Frontend)
+    runs-on: ubuntu-latest
+    outputs:
+      backend-jar: target/demo-ms-1.0.0.jar
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v5
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+          cache: maven
+
+      # ── Backend ──────────────────────
+
+      - name: Backend — Maven verify (tests + JaCoCo)
+        id: backend-tests
+        run: |
+          set -euo pipefail
+          mvn verify -B
+        working-directory: .
+
+      - name: Backend — Verify JaCoCo coverage threshold
+        run: |
+          set -euo pipefail
+          COVERAGE_FILE="target/site/jacoco/jacoco.xml"
+          if [ ! -f "$COVERAGE_FILE" ]; then
+            echo "::error::JaCoCo report not found at $COVERAGE_FILE"
+            exit 1
+          fi
+          echo "JaCoCo report verified"
+        working-directory: .
+
+      - name: Backend — SonarCloud analysis
+        id: sonar-backend
+        run: |
+          set -euo pipefail
+          mvn sonar:sonar \
+            -Dsonar.projectKey=demo-ms-backend \
+            -Dsonar.organization="${{ vars.SONAR_ORG }}" \
+            -Dsonar.host.url=https://sonarcloud.io \
+            -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \
+            -Dsonar.qualitygate.wait=true \
+            -B
+        working-directory: .
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+      # ── Frontend ─────────────────────
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Frontend — Install dependencies
+        run: |
+          set -euo pipefail
+          npm ci
+        working-directory: frontend
+
+      - name: Frontend — Lint (TypeScript strict check)
+        id: frontend-lint
+        run: |
+          set -euo pipefail
+          npm run lint
+        working-directory: frontend
+
+      - name: Frontend — Tests with coverage (Vitest)
+        id: frontend-tests
+        run: |
+          set -euo pipefail
+          npm test -- --coverage --reporter=verbose
+        working-directory: frontend
+
+      - name: Frontend — Verify coverage report exists
+        run: |
+          set -euo pipefail
+          if [ ! -f "coverage/lcov.info" ]; then
+            echo "::error::Frontend coverage report (lcov.info) not found"
+            exit 1
+          fi
+          echo "Frontend coverage report verified"
+        working-directory: frontend
+
+      - name: Frontend — SonarCloud analysis
+        id: sonar-frontend
+        run: |
+          set -euo pipefail
+          npx sonar-scanner \
+            -Dsonar.projectKey=demo-ms-frontend \
+            -Dsonar.organization="${{ vars.SONAR_ORG }}" \
+            -Dsonar.host.url=https://sonarcloud.io \
+            -Dsonar.sources=src \
+            -Dsonar.tests=src \
+            -Dsonar.test.inclusions="**/*.test.ts,**/*.test.tsx" \
+            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
+            -Dsonar.qualitygate.wait=true
+        working-directory: frontend
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+      # ── Artifacts ────────────────────
+
+      - name: Upload backend coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-report
+          path: target/site/jacoco
+
+      - name: Upload frontend coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: frontend/coverage
+
+  quality-gate:
+    name: Quality Gate Check (Fail-Fast)
+    needs: test-quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: SonarCloud Quality Gate — Backend
+        id: qg-backend
+        uses: sonarsource/sonarqube-quality-gate-action@v1
+        with:
+          projectKey: demo-ms-backend
+          organization: ${{ vars.SONAR_ORG }}
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        timeout-minutes: 5
+
+      - name: Fail on backend quality gate failure
+        if: failure() && steps.qg-backend.outcome == 'failure'
+        run: |
+          echo "============================================"
+          echo " FAIL-FAST: Backend Quality Gate REJECTED"
+          echo " El pipeline se detiene aquí."
+          echo " Razón: cobertura < 80%, bugs críticos,"
+          echo " o vulnerabilidades de seguridad detectadas."
+          echo "============================================"
+          exit 1
+
+      - name: SonarCloud Quality Gate — Frontend
+        id: qg-frontend
+        uses: sonarsource/sonarqube-quality-gate-action@v1
+        with:
+          projectKey: demo-ms-frontend
+          organization: ${{ vars.SONAR_ORG }}
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        timeout-minutes: 5
+
+      - name: Fail on frontend quality gate failure
+        if: failure() && steps.qg-frontend.outcome == 'failure'
+        run: |
+          echo "============================================"
+          echo " FAIL-FAST: Frontend Quality Gate REJECTED"
+          echo " El pipeline se detiene aquí."
+          echo " Razón: cobertura insuficiente, bugs o"
+          echo " vulnerabilidades de seguridad detectadas."
+          echo "============================================"
+          exit 1
+
+      - name: Quality Gate Summary
+        if: always()
+        run: |
+          echo "::notice::Todos los Quality Gates pasaron exitosamente. Procediendo con security scan."
+
+  security-scan:
+    name: Security Scan (Snyk + Trivy)
+    needs: quality-gate
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Snyk: Dependencies ───────────
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v5
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+          cache: maven
+
+      - name: Resolve Maven dependencies
+        run: |
+          set -euo pipefail
+          mvn dependency:resolve -B -q
+
+      - name: Install Snyk CLI
+        run: npm install -g snyk
+
+      - name: Snyk — Backend vulnerability scan
+        id: snyk-backend
+        run: |
+          set -euo pipefail
+          snyk test \
+            --all-projects \
+            --severity-threshold=high \
+            --policy-path=.snyk \
+            --json-file-output=snyk-backend-report.json || true
+          if [ -f snyk-backend-report.json ]; then
+            VULN_COUNT=$(python3 -c "
+          import json
+          with open('snyk-backend-report.json') as f:
+              data = json.load(f)
+          count = 0
+          if isinstance(data, list):
+              for item in data:
+                  count += len(item.get('vulnerabilities', []))
+          elif isinstance(data, dict):
+              for item in data.values():
+                  count += len(item.get('vulnerabilities', []))
+          print(count)
+          " 2>/dev/null || echo 0)
+            echo "Snyk found ${VULN_COUNT} high/critical vulnerabilities in backend dependencies"
+          fi
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+      - name: Snyk — Fail on critical findings
+        run: |
+          set -euo pipefail
+          snyk test \
+            --all-projects \
+            --severity-threshold=high \
+            --policy-path=.snyk
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+      - name: Upload Snyk report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: snyk-report
+          path: snyk-backend-report.json
+
+  build-push:
+    name: Build, Scan & Push to ECR
+    needs: security-scan
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      # ── Backend image ────────────────
+
+      - name: Build backend image (no push yet)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          load: true
+          tags: demo-ms-backend:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Trivy — Scan backend image
+        id: trivy-backend
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: demo-ms-backend:ci
+          format: table
+          exit-code: 1
+          severity: CRITICAL,HIGH
+          timeout: 5m
+
+      - name: Trivy — Generate backend SBOM
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: demo-ms-backend:ci
+          format: cyclonedx
+          output: trivy-backend-sbom.json
+        continue-on-error: true
+
+      - name: Upload backend SBOM
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-backend-sbom
+          path: trivy-backend-sbom.json
+
+      # ── Frontend image ───────────────
+
+      - name: Build frontend image (no push yet)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: false
+          load: true
+          tags: demo-ms-frontend:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Trivy — Scan frontend image
+        id: trivy-frontend
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: demo-ms-frontend:ci
+          format: table
+          exit-code: 1
+          severity: CRITICAL,HIGH
+          timeout: 5m
+
+      - name: Trivy — Generate frontend SBOM
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: demo-ms-frontend:ci
+          format: cyclonedx
+          output: trivy-frontend-sbom.json
+        continue-on-error: true
+
+      - name: Upload frontend SBOM
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-frontend-sbom
+          path: trivy-frontend-sbom.json
+
+      - name: Trivy Scan Results
+        if: always()
+        run: |
+          if [ "${{ steps.trivy-backend.outcome }}" = "failure" ]; then
+            echo "::error::FAIL-FAST: Trivy detected CRITICAL or HIGH vulnerabilities in backend image. Pipeline blocked."
+          fi
+          if [ "${{ steps.trivy-frontend.outcome }}" = "failure" ]; then
+            echo "::error::FAIL-FAST: Trivy detected CRITICAL or HIGH vulnerabilities in frontend image. Pipeline blocked."
+          fi
+
+      # ── Push to ECR (only if Trivy passed) ──
+
+      - name: Push backend image to ECR
+        if: steps.trivy-backend.outcome != 'failure' && steps.trivy-frontend.outcome != 'failure'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BACKEND }}:latest
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BACKEND }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Push frontend image to ECR
+        if: steps.trivy-backend.outcome != 'failure' && steps.trivy-frontend.outcome != 'failure'
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND }}:latest
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-k8s:
+    name: Deploy to Kubernetes (EKS)
+    needs: build-push
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    env:
+      DEPLOY_START_EPOCH: ${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: v1.29
+
+      - name: Generate kubeconfig for EKS
+        run: |
+          set -euo pipefail
+          aws eks update-kubeconfig \
+            --region "${{ env.AWS_REGION }}" \
+            --name "${{ vars.EKS_CLUSTER_NAME }}" || {
+              echo "::error::Failed to authenticate with EKS cluster. Check AWS credentials and cluster name."
+              exit 1
+            }
+
+      - name: Verify cluster connectivity
+        run: |
+          set -euo pipefail
+          kubectl cluster-info || {
+            echo "::error::Cannot reach Kubernetes cluster."
+            exit 1
+          }
+          kubectl get nodes --no-headers | head -1
+
+      - name: Substitute ECR registry in manifests
+        run: |
+          set -euo pipefail
+          ECR_REGISTRY="${{ steps.login-ecr.outputs.registry }}"
+          find k8s -name "*.yaml" -exec sed -i "s|\${ECR_REGISTRY}|${ECR_REGISTRY}|g" {} +
+
+      - name: Apply Kubernetes manifests
+        run: |
+          set -euo pipefail
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/configmap.yaml
+          kubectl apply -f k8s/secret.yaml
+          kubectl apply -f k8s/postgres-deployment.yaml
+          kubectl apply -f k8s/postgres-service.yaml
+          kubectl apply -f k8s/backend-deployment.yaml
+          kubectl apply -f k8s/backend-service.yaml
+          kubectl apply -f k8s/frontend-deployment.yaml
+          kubectl apply -f k8s/frontend-service.yaml
+          kubectl apply -f k8s/ingress.yaml
+          kubectl apply -f k8s/servicemonitor.yaml
+
+      - name: Verify backend rollout
+        run: |
+          set -euo pipefail
+          kubectl rollout status deployment/backend \
+            -n greeting-app \
+            --timeout=300s || {
+              echo "::error::Backend rollout FAILED. Check logs with: kubectl logs -n greeting-app -l app=backend --tail=50"
+              kubectl describe pods -n greeting-app -l app=backend
+              exit 1
+            }
+
+      - name: Verify frontend rollout
+        run: |
+          set -euo pipefail
+          kubectl rollout status deployment/frontend \
+            -n greeting-app \
+            --timeout=120s || {
+              echo "::error::Frontend rollout FAILED. Check logs with: kubectl logs -n greeting-app -l app=frontend --tail=50"
+              kubectl describe pods -n greeting-app -l app=frontend
+              exit 1
+            }
+
+      - name: Verify PostgreSQL is ready
+        run: |
+          set -euo pipefail
+          kubectl wait --for=condition=ready pod \
+            -l app=postgres \
+            -n greeting-app \
+            --timeout=120s || {
+              echo "::error::PostgreSQL pod is not ready."
+              exit 1
+            }
+
+      - name: Publish deploy metrics to CloudWatch
+        run: |
+          set -euo pipefail
+          DEPLOY_END=$(date +%s)
+          DEPLOY_DURATION=$(( DEPLOY_END - $(date -d "${{ github.run_started_at }}" +%s) ))
+          aws cloudwatch put-metric-data \
+            --namespace "GreetingService/CICD" \
+            --metric-name "DeployDurationSeconds" \
+            --value "$DEPLOY_DURATION" \
+            --unit Seconds \
+            --region "${{ env.AWS_REGION }}" \
+            --dimensions "Pipeline=EP3,Service=FullStack" || true
+          echo "Deploy duration: ${DEPLOY_DURATION}s"
+
+  smoke-tests:
+    name: Smoke Tests
+    needs: deploy-k8s
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE }}
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: v1.29
+
+      - name: Generate kubeconfig
+        run: |
+          set -euo pipefail
+          aws eks update-kubeconfig \
+            --region "${{ env.AWS_REGION }}" \
+            --name "${{ vars.EKS_CLUSTER_NAME }}"
+
+      - name: Smoke — Frontend health
+        id: smoke-frontend
+        run: |
+          set -euo pipefail
+          kubectl run smoke-curl-frontend --rm -i --restart=Never --image=curlimages/curl:8.9.1 -n greeting-app -- \
+            curl -f -s -o /dev/null -w "%{http_code}" http://frontend-service.greeting-app.svc.cluster.local/health || {
+              echo "::error::SMOKE FAILED: Frontend health endpoint not responding"
+              exit 1
+            }
+
+      - name: Smoke — Backend health
+        id: smoke-backend
+        run: |
+          set -euo pipefail
+          kubectl run smoke-curl-backend --rm -i --restart=Never --image=curlimages/curl:8.9.1 -n greeting-app -- \
+            curl -f -s http://backend-service.greeting-app.svc.cluster.local:8080/actuator/health || {
+              echo "::error::SMOKE FAILED: Backend health endpoint not responding"
+              exit 1
+            }
+
+      - name: Smoke — Create greeting via API
+        id: smoke-create
+        run: |
+          set -euo pipefail
+          RESPONSE=$(kubectl run smoke-curl-post --rm -i --restart=Never --image=curlimages/curl:8.9.1 -n greeting-app -- \
+            curl -f -s -X POST "http://backend-service.greeting-app.svc.cluster.local:8080/api/v1/greetings?name=EP3-Smoke")
+          echo "$RESPONSE" | grep -q "Hola DevOps V4" || {
+            echo "::error::SMOKE FAILED: POST /api/v1/greetings returned unexpected response: $RESPONSE"
+            exit 1
+          }
+          echo "SMOKE PASSED: Greeting created successfully"
+
+      - name: Smoke — Prometheus metrics exposed
+        id: smoke-metrics
+        run: |
+          set -euo pipefail
+          kubectl run smoke-curl-metrics --rm -i --restart=Never --image=curlimages/curl:8.9.1 -n greeting-app -- \
+            curl -f -s http://backend-service.greeting-app.svc.cluster.local:8080/actuator/prometheus | grep -q "jvm_memory_used_bytes" || {
+              echo "::error::SMOKE FAILED: Prometheus metrics endpoint not exposing expected data"
+              exit 1
+            }
+          echo "SMOKE PASSED: Prometheus metrics available"
+
+      - name: Smoke — Publish health metrics to CloudWatch
+        if: always()
+        run: |
+          PASS_COUNT=0
+          for step in smoke-frontend smoke-backend smoke-create smoke-metrics; do
+            if [ "${{ steps[step].outcome }}" = "success" ]; then
+              PASS_COUNT=$((PASS_COUNT + 1))
+            fi
+          done
+          aws cloudwatch put-metric-data \
+            --namespace "GreetingService/CICD" \
+            --metric-name "SmokeTestsPassed" \
+            --value "$PASS_COUNT" \
+            --unit Count \
+            --region "${{ env.AWS_REGION }}"
+
+  sync-local:
+    name: Sync & Redeploy Local
+    needs: smoke-tests
+    if: github.event_name != 'pull_request'
+    runs-on: self-hosted
+    steps:
+      - name: Pull latest from main
+        run: |
+          set -euo pipefail
+          cd $HOME/Duoc/Devops/demo-ms
+          git pull origin main
+
+      - name: Redeploy with Docker Compose
+        continue-on-error: true
+        run: |
+          cd $HOME/Duoc/Devops/demo-ms
+          if docker info >/dev/null 2>&1; then
+            cp "$HOME"/.docker/config.json "$HOME"/.docker/config.json.bak
+            trap 'mv "$HOME"/.docker/config.json.bak "$HOME"/.docker/config.json' EXIT
+            python3 -c "import json, os; h=os.environ['HOME']; c=json.load(open(h+'/.docker/config.json')); c.pop('credsStore',None); json.dump(c, open(h+'/.docker/config.json','w'))"
+            docker compose down
+            docker rm -f demo-db demo-ms 2>/dev/null
+            docker compose up -d --build
+          else
+            echo "Docker no esta corriendo. Solo se hizo git pull."
+            echo "Ejecuta manualmente: docker compose up -d --build"
+          fi
