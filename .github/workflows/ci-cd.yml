@@ -574,11 +574,11 @@ jobs:
         if: always()
         run: |
           PASS_COUNT=0
-          for step in smoke-frontend smoke-backend smoke-create smoke-metrics smoke-html; do
-            if [ "${{ steps[step].outcome }}" = "success" ]; then
-              PASS_COUNT=$((PASS_COUNT + 1))
-            fi
-          done
+          if [ "${{ steps.smoke-frontend.outcome }}" = "success" ]; then PASS_COUNT=$((PASS_COUNT + 1)); fi
+          if [ "${{ steps.smoke-backend.outcome }}" = "success" ]; then PASS_COUNT=$((PASS_COUNT + 1)); fi
+          if [ "${{ steps.smoke-create.outcome }}" = "success" ]; then PASS_COUNT=$((PASS_COUNT + 1)); fi
+          if [ "${{ steps.smoke-metrics.outcome }}" = "success" ]; then PASS_COUNT=$((PASS_COUNT + 1)); fi
+          if [ "${{ steps.smoke-html.outcome }}" = "success" ]; then PASS_COUNT=$((PASS_COUNT + 1)); fi
           aws cloudwatch put-metric-data \
             --namespace "GreetingService/CICD" \
             --metric-name "SmokeTestsPassed" \
