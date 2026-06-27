@@ -247,7 +247,7 @@ jobs:
 
       - name: Trivy — Scan backend image
         id: trivy-backend
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.29.0
         with:
           image-ref: demo-ms-backend:ci
           format: table
@@ -256,7 +256,7 @@ jobs:
           timeout: 5m
 
       - name: Trivy — Generate backend SBOM
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.29.0
         with:
           image-ref: demo-ms-backend:ci
           format: cyclonedx
@@ -282,7 +282,7 @@ jobs:
 
       - name: Trivy — Scan frontend image
         id: trivy-frontend
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.29.0
         with:
           image-ref: demo-ms-frontend:ci
           format: table
@@ -291,7 +291,7 @@ jobs:
           timeout: 5m
 
       - name: Trivy — Generate frontend SBOM
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.29.0
         with:
           image-ref: demo-ms-frontend:ci
           format: cyclonedx
