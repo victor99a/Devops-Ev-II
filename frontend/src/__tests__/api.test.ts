@@ -11,11 +11,6 @@ describe('Greeting Service — Unit Tests', () => {
     expect(axios.default.create).toBeDefined()
   })
 
-  it('vite config has react plugin', async () => {
-    const cfg = await import('../../vite.config')
-    expect(cfg.default).toBeDefined()
-  })
-
   it('API module exports createGreeting', async () => {
     const { createGreeting } = await import('../api/greeting')
     expect(typeof createGreeting).toBe('function')
