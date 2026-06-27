@@ -244,6 +244,7 @@ jobs:
           exit-code: '1'
           severity: CRITICAL,HIGH
           timeout: 5m0s
+        continue-on-error: true
 
       - name: Build frontend image
         uses: docker/build-push-action@v6
@@ -264,13 +265,22 @@ jobs:
           exit-code: '1'
           severity: CRITICAL,HIGH
           timeout: 5m0s
+        continue-on-error: true
 
       - name: Trivy Scan Results
         if: always()
         run: |
+          FAIL="false"
           if [ "${{ steps.trivy-backend.outcome }}" = "failure" ]; then
-            echo "::error::Trivy CRITICAL/HIGH vuln in backend"
+            echo "::error::Trivy found CRITICAL or HIGH vulns in backend image"
+            FAIL="true"
           fi
           if [ "${{ steps.trivy-frontend.outcome }}" = "failure" ]; then
-            echo "::error::Trivy CRITICAL/HIGH vuln in frontend"
+            echo "::error::Trivy found CRITICAL or HIGH vulns in frontend image"
+            FAIL="true"
           fi
+          if [ "$FAIL" = "true" ]; then
+            echo "FAIL-FAST: Trivy security scan blocked deployment"
+            exit 1
+          fi
+          echo "Trivy scan clean - no CRITICAL or HIGH vulnerabilities"
