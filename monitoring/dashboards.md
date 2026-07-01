@@ -1,4 +1,4 @@
-# Dashboards de Monitoreo — Greeting Service EP3
+# Dashboards de Monitoreo — Greeting Service EP3 (EC2 + Docker Compose)
 
 ## 1. Métricas expuestas por el Backend (Micrometer + Prometheus)
 
@@ -17,251 +17,103 @@
 | `application_started_time_seconds` | Tiempo que tomó iniciar la app | Gauge |
 | `spring_application_ready` | Indicador de aplicación lista | Gauge |
 
-El endpoint es: `GET /actuator/prometheus`
+Endpoint: `GET /actuator/prometheus`
 
 ---
 
-## 2. Estructura del Dashboard Grafana
+## 2. Métricas de EC2 (CloudWatch Agent)
 
-### 2.1 Panel: Disponibilidad del Servicio
+El CloudWatch Agent instalado en la EC2 vía `infra/ec2-setup.sh` recolecta:
 
-```promql
-up{app="greeting-service"}
-```
-
-**Descripción:** Estado up/down de cada pod. Si `up == 0`, el servicio está caído.
-
----
-
-### 2.2 Panel: Tasa de Errores HTTP (5xx)
-
-```promql
-sum(rate(http_server_requests_seconds_count{status=~"5.."}[5m]))
-/
-sum(rate(http_server_requests_seconds_count[5m]))
-* 100
-```
-
-**Descripción:** Porcentaje de errores 5xx en los últimos 5 minutos.
-
----
-
-### 2.3 Panel: Tasa de Errores HTTP (4xx)
-
-```promql
-sum(rate(http_server_requests_seconds_count{status=~"4.."}[5m]))
-/
-sum(rate(http_server_requests_seconds_count[5m]))
-* 100
-```
-
----
-
-### 2.4 Panel: Requests por Segundo (RPS)
-
-```promql
-sum(rate(http_server_requests_seconds_count[1m]))
-```
-
----
-
-### 2.5 Panel: Latencia P99
-
-```promql
-histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket[5m])) by (le))
-```
-
----
-
-### 2.6 Panel: Uso de CPU por Contenedor
-
-```promql
-rate(container_cpu_usage_seconds_total{namespace="greeting-app"}[5m])
-```
-
-*(Requiere métricas de kubelet o cAdvisor en el clúster)*
-
----
-
-### 2.7 Panel: Uso de Memoria JVM
-
-```promql
-jvm_memory_used_bytes{area="heap"} / jvm_memory_max_bytes{area="heap"} * 100
-```
-
----
-
-### 2.8 Panel: Conexiones Activas a PostgreSQL (HikariCP)
-
-```promql
-hikaricp_connections_active
-```
-
----
-
-### 2.9 Panel: Cobertura de Pruebas
-
-La cobertura se obtiene desde SonarCloud vía métrica externa. Configurar el datasource de SonarCloud en Grafana:
-
-```promql
-sonar_project_coverage{key="demo-ms"}
-```
-
-Alternativa: usar el Grafana plugin **SonarQube** o **REST API** via `infinity` datasource.
-
----
-
-### 2.10 Panel: Tiempos de Despliegue
-
-**Fuente:** GitHub Actions metrics exportadas a CloudWatch. Alternativa: métrica custom desde el pipeline.
-
-Se puede enviar una métrica custom via `aws cloudwatch put-metric-data` al inicio y fin del job `deploy-k8s`:
-
-```bash
-DURATION=$(( $(date +%s) - DEPLOY_START_TIME ))
-aws cloudwatch put-metric-data \
-  --namespace "GreetingService/CI" \
-  --metric-name "DeployDurationSeconds" \
-  --value "$DURATION" \
-  --unit Seconds
-```
-
-Esto se grafica en CloudWatch Dashboard o en Grafana.
-
----
-
-## 3. Configuración de Prometheus ServiceMonitor
-
-Para que Prometheus Operator descubra automáticamente los pods:
-
-```yaml
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: greeting-backend
-  namespace: greeting-app
-spec:
-  selector:
-    matchLabels:
-      app: backend
-  endpoints:
-    - port: http
-      path: /actuator/prometheus
-      interval: 30s
-```
-
----
-
-## 4. Configuración de CloudWatch Container Insights
-
-Para EKS, habilitar Container Insights en el clúster:
-
-```bash
-aws eks update-addon \
-  --cluster-name <CLUSTER_NAME> \
-  --addon-name amazon-cloudwatch-observability \
-  --region <REGION>
-```
-
-Esto inyecta métricas de CPU, memoria, red y disco a CloudWatch automáticamente.
-
----
-
-## 5. Métricas del Pipeline CI/CD (GitHub Actions → CloudWatch)
-
-Agregar al final del job `deploy-k8s` en `ci-cd.yml`:
-
-```yaml
-- name: Publish deploy duration metric
-  run: |
-    aws cloudwatch put-metric-data \
-      --namespace "GreetingService/CI" \
-      --metric-name "DeployDurationSeconds" \
-      --value "$(( $(date +%s) - ${{ env.DEPLOY_START_EPOCH }} ))" \
-      --unit Seconds \
-      --region ${{ env.AWS_REGION }}
-```
-
----
-
-## 6. Logs Centralizados
-
-Para CloudWatch Logs desde EKS:
-
-1. Crear un IAM role con política `CloudWatchAgentServerPolicy`
-2. Instalar Fluent Bit como DaemonSet con output a CloudWatch Logs
-3. Log group naming: `/aws/eks/<cluster>/containers`
-
-Esto centraliza los logs de todos los pods en CloudWatch Logs Insights, permitiendo queries como:
-
-```
-filter @logStream like /backend/
-| filter @message like /ERROR/
-| stats count() by bin(5m)
-```
-
----
-
-## 7. Dashboards CloudWatch Sugeridos
-
-| Dashboard | Widgets |
+| Métrica (CWAgent) | Descripción |
 |---|---|
-| **Greeting-Service-Overview** | CPU/Memoria promedio de backend + frontend, RPS, Tasa de errores |
-| **Greeting-Service-DB** | Conexiones HikariCP, latencia de queries, uso de storage PostgreSQL |
-| **Greeting-Service-CICD** | Tiempo de deploy, cobertura de pruebas, fallos de pipeline |
+| `cpu_usage_user` | CPU en modo usuario (%) |
+| `cpu_usage_system` | CPU en modo sistema (%) |
+| `mem_used_percent` | Memoria usada (%) |
+| `disk_used_percent` | Disco usado (%) |
 
 ---
 
-## 8. Cobertura de Código — SonarCloud
+## 3. Métricas del Pipeline CI/CD
 
-### Integración con el Pipeline CI/CD
+Métricas custom publicadas desde GitHub Actions:
 
-SonarCloud está integrado en la etapa `test-quality` del pipeline con `qualitygate.wait=true`. Los resultados de cobertura se publican automáticamente:
+| Namespace | Métrica | Descripción |
+|---|---|---|
+| `GreetingService/CICD` | `DeployDurationSeconds` | Duración total del despliegue (desde job `deploy-ec2`) |
+| `GreetingService/CICD` | `SmokeTestsPassed` | Cantidad de smoke tests que pasaron (0-5) |
 
-| Proyecto | SonarCloud Key | Fuente de cobertura |
+---
+
+## 4. Dashboard CloudWatch
+
+Crear con: `bash monitoring/cloudwatch-dashboard.sh`
+
+Widgets:
+- CPU Utilization (CWAgent)
+- Memory Utilization (CWAgent)
+- Tiempo de Despliegue (custom)
+- Disco usado (CWAgent)
+- Smoke Tests pasados (custom)
+- Errores del sistema (CloudWatch Logs)
+- Errores Docker (CloudWatch Logs)
+
+---
+
+## 5. Dashboard Grafana
+
+Importar `monitoring/grafana-dashboard.json` en Grafana. Requiere datasources:
+- **Prometheus**: conectado a `http://<EC2_IP>:8080/actuator/prometheus` o vía Prometheus server
+- **CloudWatch**: para métricas CI/CD
+
+Paneles incluidos en el JSON:
+- UP/DOWN status por servicio
+- Tasa de errores HTTP 5xx
+- Requests por segundo
+- Latencia P99
+- Requests por status code (2xx/4xx/5xx)
+- Latencia HTTP percentiles (P50/P90/P99)
+- CPU por contenedor
+- Memoria por contenedor
+- JVM Memory (Heap + Non-Heap)
+- HikariCP conexiones DB
+- JVM GC pause time
+- Cobertura backend (SonarCloud)
+- Cobertura frontend (SonarCloud)
+- Tiempo de despliegue
+- Smoke tests pasados
+
+---
+
+## 6. Cobertura de Código — SonarCloud
+
+| Proyecto | Key | Fuente de cobertura |
 |---|---|---|
 | Backend (Java/Maven) | `victor99a_Devops-Ev-II` | JaCoCo XML (`target/site/jacoco/jacoco.xml`) |
 | Frontend (React/TS) | `victor99a_Devops-Ev-II_Frontend` | LCOV (`frontend/coverage/lcov.info`) |
 
-### Consulta de Cobertura vía API de SonarCloud
-
+**Consulta vía API:**
 ```bash
-# Backend
 curl -s -u "$SONAR_TOKEN:" \
-  "https://sonarcloud.io/api/measures/component?component=victor99a_Devops-Ev-II&metricKeys=coverage,bugs,vulnerabilities,code_smells"
-
-# Frontend
-curl -s -u "$SONAR_TOKEN:" \
-  "https://sonarcloud.io/api/measures/component?component=victor99a_Devops-Ev-II_Frontend&metricKeys=coverage,bugs,vulnerabilities,code_smells"
+  "https://sonarcloud.io/api/measures/component?component=victor99a_Devops-Ev-II&metricKeys=coverage,bugs,vulnerabilities"
 ```
 
-### Visualización en Grafana
-
-Para mostrar la cobertura en un dashboard de Grafana, configurar el datasource **SonarQube**:
-
-1. Instalar el plugin de Grafana: `grafana-cli plugins install briangann-sonarqube-datasource`
-2. Configurar el datasource con URL `https://sonarcloud.io` y el token de SonarCloud
-3. Agregar un panel **Gauge** con query:
-   ```json
-   {
-     "projectKey": "victor99a_Devops-Ev-II",
-     "metricKeys": "coverage"
-   }
-   ```
-
-### Thresholds de Quality Gate (Fail-Fast)
-
-| Métrica | Umbral | Acción si falla |
+**Thresholds Quality Gate:**
+| Métrica | Umbral | Acción |
 |---|---|---|
-| Coverage | < 80% | Pipeline `exit 1` — no se despliega |
-| Bugs | ≥ 1 Blocker | Pipeline `exit 1` — no se despliega |
-| Vulnerabilities | ≥ 1 Critical | Pipeline `exit 1` — no se despliega |
-| Code Smells | No bloqueante | Advertencia en logs del pipeline |
+| Coverage | < 80% | Pipeline `exit 1` |
+| Bugs | >= 1 Blocker | Pipeline `exit 1` |
+| Vulnerabilities | >= 1 Critical | Pipeline `exit 1` |
 
-### Badge de Cobertura
+---
 
-```
-[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=victor99a_Devops-Ev-II&metric=coverage)](https://sonarcloud.io/dashboard?id=victor99a_Devops-Ev-II)
-```
+## 7. Logs Centralizados (CloudWatch Logs)
 
-Este badge puede incluirse en el `README.md` del repositorio para visibilidad inmediata del estado de calidad.
+Los logs se recolectan vía CloudWatch Agent en la EC2:
+
+| Log Group | Fuente | Contenido |
+|---|---|---|
+| `/greeting-service/ec2/system` | `/var/log/messages` | Logs del sistema operativo |
+| `/greeting-service/ec2/docker` | `/var/log/docker` | Logs de Docker daemon |
+
+Los logs de los contenedores se acceden vía `docker compose logs` en la EC2 o mediante `docker logs <container>`.

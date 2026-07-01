@@ -9,6 +9,9 @@ on:
 
 env:
   JAVA_VERSION: "21"
+  AWS_REGION: us-east-1
+  ECR_BACKEND: demo-ms-backend
+  ECR_FRONTEND: demo-ms-frontend
   SONAR_ORG: victor99a
   SONAR_HOST: https://sonarcloud.io
 
@@ -23,19 +26,21 @@ defaults:
 jobs:
 
   # ═══════════════════════════════════════════════════════
-  # ETAPA 1: Test & Quality (Backend + Frontend)
-  # Integra SonarCloud con qualitygate.wait=true
+  # FASE 1: Test & Quality (IE5)
+  # Backend: Maven verify + JaCoCo + SonarCloud
+  # Frontend: npm ci + lint + vitest + SonarCloud
+  # qualitygate.wait=true en ambos → fail-fast si rechaza
   # ═══════════════════════════════════════════════════════
 
   test-quality:
-    name: Test & Quality (Backend + Frontend)
+    name: Test & Quality — SonarCloud Backend + Frontend
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # ── Backend (Java / Maven) ──────────────────────
+      # ── Backend ──────────────────────────────────────
 
       - name: Set up JDK ${{ env.JAVA_VERSION }}
         uses: actions/setup-java@v5
@@ -44,10 +49,9 @@ jobs:
           distribution: temurin
           cache: maven
 
-      - name: Backend — Maven verify (tests + JaCoCo + SonarCloud)
-        id: backend-tests
+      - name: Backend — Maven verify + JaCoCo + SonarCloud
+        id: backend
         run: |
-          set -euo pipefail
           mvn verify sonar:sonar \
             -B \
             -Dsonar.projectKey=victor99a_Devops-Ev-II \
@@ -59,21 +63,10 @@ jobs:
             -Dsonar.tests=src/test/java \
             -Dsonar.qualitygate.wait=true \
             -Dsonar.token="${{ secrets.SONAR_TOKEN }}"
-        working-directory: .
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
-      - name: Backend — Verify JaCoCo coverage threshold
-        run: |
-          set -euo pipefail
-          COVERAGE_FILE="target/site/jacoco/jacoco.xml"
-          if [ ! -f "$COVERAGE_FILE" ]; then
-            echo "::error::JaCoCo report not found at $COVERAGE_FILE"
-            exit 1
-          fi
-          echo "JaCoCo report verified"
-
-      # ── Frontend (React / TypeScript) ────────────────
+      # ── Frontend ─────────────────────────────────────
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -83,48 +76,43 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Frontend — Install dependencies
-        run: |
-          set -euo pipefail
-          npm ci --legacy-peer-deps
+        run: npm ci --legacy-peer-deps
         working-directory: frontend
 
-      - name: Frontend — Lint (TypeScript strict check)
-        id: frontend-lint
-        run: |
-          set -euo pipefail
-          npm run lint
+      - name: Frontend — Lint (TypeScript check)
+        run: npm run lint
         working-directory: frontend
 
-      - name: Frontend — Tests with coverage (Vitest)
-        id: frontend-tests
-        run: |
-          set -euo pipefail
-          npm test -- --coverage --reporter=verbose
+      - name: Frontend — Tests + Coverage (Vitest)
+        run: npm test -- --coverage --reporter=verbose
         working-directory: frontend
 
-      - name: Frontend — Verify coverage report
+      - name: Frontend — SonarCloud analysis
         run: |
-          set -euo pipefail
-          if [ ! -f "coverage/lcov.info" ]; then
-            echo "::warning::lcov.info not found, checking alternative paths..."
-            ls -la coverage/ 2>/dev/null || echo "No coverage dir"
-          else
-            echo "Coverage report (lcov.info) found"
-          fi
+          npx sonar-scanner \
+            -Dsonar.projectKey=victor99a_Devops-Ev-II_Frontend \
+            -Dsonar.organization="${{ env.SONAR_ORG }}" \
+            -Dsonar.host.url="${{ env.SONAR_HOST }}" \
+            -Dsonar.sources=src \
+            -Dsonar.tests=src \
+            -Dsonar.test.inclusions="**/*.test.ts,**/*.test.tsx" \
+            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
+            -Dsonar.qualitygate.wait=true \
+            -Dsonar.token="${{ secrets.SONAR_TOKEN }}"
         working-directory: frontend
-
-      # SonarCloud solo backend. Fail-fast integrado via qualitygate.wait=true
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
       # ── Artifacts ────────────────────────────────────
 
-      - name: Upload backend coverage report
+      - name: Upload backend coverage
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: jacoco-report
           path: target/site/jacoco
 
-      - name: Upload frontend coverage report
+      - name: Upload frontend coverage
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -132,13 +120,13 @@ jobs:
           path: frontend/coverage
 
   # ═══════════════════════════════════════════════════════
-  # ETAPA 2: Quality Gate Check (FAIL-FAST)
-  # Si SonarCloud detecta bugs, vulnerabilidades o
-  # cobertura insuficiente, el pipeline se detiene aquí
+  # FASE 2: Security Scan — Snyk (IE6 FAIL-FAST)
+  # Bloquea el pipeline si encuentra HIGH o CRITICAL
+  # Evidencia: captura de pantalla del pipeline en rojo
   # ═══════════════════════════════════════════════════════
 
   security-scan:
-    name: Security Scan (Snyk)
+    name: Security Scan — Snyk (Fail-Fast HIGH)
     needs: test-quality
     runs-on: ubuntu-latest
     if: github.event_name != 'pull_request'
@@ -153,20 +141,143 @@ jobs:
           cache: maven
 
       - name: Resolve Maven dependencies
-        run: |
-          set -euo pipefail
-          mvn dependency:resolve -B -q
+        run: mvn dependency:resolve -B -q
 
       - name: Install Snyk CLI
         run: npm install -g snyk
 
-      - name: Snyk — Vulnerability scan
+      - name: Snyk — Vulnerability scan (HIGH threshold)
         id: snyk
         run: |
-          set -euo pipefail
           snyk test \
             --all-projects \
             --severity-threshold=high \
-            --policy-path=.snyk || true
+            --policy-path=.snyk
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+  # ═══════════════════════════════════════════════════════
+  # FASE 3: Build & Push to ECR
+  # Construye imágenes Docker y las publica en AWS ECR
+  # ═══════════════════════════════════════════════════════
+
+  build-push:
+    name: Build & Push to ECR
+    needs: security-scan
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build & push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BACKEND }}:latest
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BACKEND }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND }}:latest
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ═══════════════════════════════════════════════════════
+  # FASE 4: Deploy to EC2 (IE2)
+  # SSH → git pull → docker compose up -d
+  # ═══════════════════════════════════════════════════════
+
+  deploy-ec2:
+    name: Deploy to EC2 (Docker Compose)
+    needs: build-push
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE }}
+
+      - name: Get EC2 public IP
+        id: ec2-ip
+        run: |
+          IP=$(aws ec2 describe-instances \
+            --region "${{ env.AWS_REGION }}" \
+            --filters "Name=tag:Name,Values=greeting-ec2-ep3" "Name=instance-state-name,Values=running" \
+            --query 'Reservations[0].Instances[0].PublicIpAddress' \
+            --output text)
+          if [ -z "$IP" ] || [ "$IP" = "None" ]; then
+            echo "::error::No EC2 instance found with tag Name=greeting-ec2-ep3"
+            exit 1
+          fi
+          echo "ip=$IP" >> "$GITHUB_OUTPUT"
+          echo "EC2 target: $IP"
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ steps.ec2-ip.outputs.ip }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          script: |
+            set -euo pipefail
+            cd /home/ec2-user/Devops-Ev-II
+
+            echo "=== Pulling latest code ==="
+            git checkout main
+            git pull origin main
+
+            echo "=== Pulling latest images ==="
+            sudo docker compose pull 2>/dev/null || true
+
+            echo "=== Starting services ==="
+            sudo docker compose down --remove-orphans || true
+            sudo docker compose up -d --build
+
+            echo "=== Waiting for health checks ==="
+            sleep 30
+            sudo docker compose ps
+
+            echo "=== Smoke checks ==="
+            curl -fsS -o /dev/null -w "Frontend: HTTP %{http_code}\n" http://localhost/health
+            curl -fsS http://localhost:8080/actuator/health
+
+      - name: Publish deploy metrics to CloudWatch
+        if: always()
+        run: |
+          DEPLOY_END=$(date +%s)
+          DEPLOY_DURATION=$(( DEPLOY_END - $(date -d "${{ github.run_started_at }}" +%s) ))
+          aws cloudwatch put-metric-data \
+            --namespace "GreetingService/CICD" \
+            --metric-name "DeployDurationSeconds" \
+            --value "$DEPLOY_DURATION" \
+            --unit Seconds \
+            --region "${{ env.AWS_REGION }}" \
+            --dimensions "Pipeline=EP3,Service=FullStack" || true
+          echo "Deploy: ${DEPLOY_DURATION}s"

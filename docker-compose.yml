@@ -1,5 +1,5 @@
 services:
-  db:
+  database:
     image: postgres:15-alpine
     container_name: demo-db
     environment:
@@ -17,24 +17,30 @@ services:
       retries: 5
     restart: unless-stopped
 
-  app:
+  backend:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: demo-ms
+    container_name: demo-backend
     ports:
       - "8080:8080"
     environment:
-      DB_HOST: db
+      DB_HOST: database
       DB_PORT: "5432"
       DB_NAME: demo
       DB_USER: postgres
       DB_PASS: postgres
       JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75.0
     depends_on:
-      db:
+      database:
         condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
     deploy:
       resources:
         limits:
@@ -52,7 +58,7 @@ services:
     ports:
       - "80:80"
     depends_on:
-      app:
+      backend:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
