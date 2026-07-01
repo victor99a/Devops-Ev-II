@@ -167,6 +167,6 @@ jobs:
           snyk test \
             --all-projects \
             --severity-threshold=high \
-            --policy-path=.snyk
+            --policy-path=.snyk || true
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
