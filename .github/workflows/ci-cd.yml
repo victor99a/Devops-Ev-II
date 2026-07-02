@@ -147,64 +147,16 @@ jobs:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
 
   # ═══════════════════════════════════════════════════════
-  # FASE 3: Build & Push to ECR
-  # Construye imágenes Docker y las publica en AWS ECR
-  # ═══════════════════════════════════════════════════════
-
-  build-push:
-    name: Build & Push to ECR
-    needs: security-scan
-    runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request'
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-region: ${{ env.AWS_REGION }}
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE }}
-
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Build & push backend image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile
-          push: true
-          tags: |
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BACKEND }}:latest
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BACKEND }}:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build & push frontend image
-        uses: docker/build-push-action@v6
-        with:
-          context: ./frontend
-          push: true
-          tags: |
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND }}:latest
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND }}:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  # ═══════════════════════════════════════════════════════
-  # FASE 4: Deploy to EC2 (IE2)
-  # SSH → git pull → docker compose up -d
+  # FASE 3: Deploy to EC2 (IE2)
+  # SSH → git pull → docker compose up -d --build
+  # La EC2 construye imagenes localmente (no requiere ECR)
   # ═══════════════════════════════════════════════════════
 
   deploy-ec2:
     name: Deploy to EC2 (Docker Compose)
-    needs: build-push
+    needs: security-scan
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'workflow_dispatch'
     steps:
       - uses: actions/checkout@v4
 
@@ -243,13 +195,9 @@ jobs:
             git checkout main
             git pull origin main
 
-            echo "=== ECR login ==="
-            aws ecr get-login-password --region us-east-1 | sudo docker login --username AWS --password-stdin 992382358824.dkr.ecr.us-east-1.amazonaws.com || true
-
-            echo "=== Pulling images and restarting ==="
-            sudo docker compose pull 2>/dev/null || true
+            echo "=== Rebuilding and restarting ==="
             sudo docker compose down --remove-orphans || true
-            sudo docker compose up -d
+            sudo docker compose up -d --build
 
             echo "=== Waiting for health checks ==="
             sleep 30
@@ -258,7 +206,7 @@ jobs:
             echo "=== Smoke tests ==="
             curl -fsS -o /dev/null -w "Frontend: HTTP %{http_code}\n" http://localhost/health
             curl -fsS http://localhost:8080/actuator/health
-            curl -fsS -X POST "http://localhost/api/v1/greetings?name=SmokeTest" | grep -q "Hola DevOps V4" && echo "API OK"
+            curl -fsS -X POST "http://localhost/api/v1/greetings?name=CI-CD-Smoke" | grep -q "Hola DevOps V4" && echo "API OK"
 
       - name: Publish deploy metrics to CloudWatch
         if: always()
