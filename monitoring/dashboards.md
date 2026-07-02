@@ -90,7 +90,6 @@ Paneles incluidos en el JSON:
 | Proyecto | Key | Fuente de cobertura |
 |---|---|---|
 | Backend (Java/Maven) | `victor99a_Devops-Ev-II` | JaCoCo XML (`target/site/jacoco/jacoco.xml`) |
-| Frontend (React/TS) | `victor99a_Devops-Ev-II_Frontend` | LCOV (`frontend/coverage/lcov.info`) |
 
 **Consulta vía API:**
 ```bash

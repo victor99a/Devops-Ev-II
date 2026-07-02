@@ -96,14 +96,13 @@ Spring Boot 3.3.5 contiene vulnerabilidades HIGH conocidas en dependencias del e
 
 ### 1.6 SonarCloud — Cumplimiento Normativo Automatizado
 
-SonarCloud actúa como política activa de calidad en el pipeline CI/CD, cubriendo **backend y frontend**:
+SonarCloud actúa como política activa de calidad en el pipeline CI/CD:
 
 | Proyecto | Key | Lenguaje | Quality Gate |
 |---|---|---|---|
 | Backend | `victor99a_Devops-Ev-II` | Java 17 / Maven | Cobertura ≥ 80%, 0 bugs blocker, 0 vulnerabilidades critical |
-| Frontend | `victor99a_Devops-Ev-II_Frontend` | TypeScript / React | Cobertura ≥ 70%, 0 bugs blocker, 0 vulnerabilidades critical |
 
-El comando `mvn verify sonar:sonar -Dsonar.qualitygate.wait=true` ejecuta tests, verifica cobertura con JaCoCo y publica resultados a SonarCloud. Para el frontend, `npx sonar-scanner` con `sonar-project.properties` publica la cobertura de Vitest.
+El comando `mvn verify sonar:sonar -Dsonar.qualitygate.wait=true` ejecuta tests, verifica cobertura con JaCoCo y publica resultados a SonarCloud. El frontend ejecuta tests y lint con Vitest + TypeScript, generando reportes de cobertura independientes.
 
 ### 1.7 Estrategia de Monitoreo y Observabilidad
 

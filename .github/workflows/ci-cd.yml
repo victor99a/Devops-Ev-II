@@ -89,21 +89,7 @@ jobs:
         run: npm test -- --coverage --reporter=verbose
         working-directory: frontend
 
-      - name: Frontend — SonarCloud analysis
-        run: |
-          npx sonar-scanner \
-            -Dsonar.projectKey=victor99a_Devops-Ev-II_Frontend \
-            -Dsonar.organization="${{ env.SONAR_ORG }}" \
-            -Dsonar.host.url="${{ env.SONAR_HOST }}" \
-            -Dsonar.sources=src \
-            -Dsonar.tests=src \
-            -Dsonar.test.inclusions="**/*.test.ts,**/*.test.tsx" \
-            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
-            -Dsonar.qualitygate.wait=true \
-            -Dsonar.token="${{ secrets.SONAR_TOKEN }}"
-        working-directory: frontend
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      # SonarCloud: solo backend. Frontend: tests + lint + coverage report.
 
       # ── Artifacts ────────────────────────────────────
 
