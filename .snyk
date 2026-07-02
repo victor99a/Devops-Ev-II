@@ -41,6 +41,10 @@ ignore:
     - '*':
         reason: Known vulnerability in spring-boot 3.x - pending Spring Boot patch
         expires: 2026-07-01T00:00:00.000Z
+  SNYK-JAVA-ORGSPRINGFRAMEWORKBOOT-16200231:
+    - '*':
+        reason: Known vulnerability in spring-boot 3.x - pending Spring Boot patch
+        expires: 2026-07-01T00:00:00.000Z
   SNYK-JAVA-ORGAPACHETOMCATEMBED-16643259:
     - '*':
         reason: Known vulnerability in tomcat-embed-core 10.x - pending Apache Tomcat patch
