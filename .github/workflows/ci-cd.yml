@@ -27,9 +27,8 @@ jobs:
 
   # ═══════════════════════════════════════════════════════
   # FASE 1: Test & Quality (IE5)
-  # Backend: Maven verify + JaCoCo + SonarCloud
-  # Frontend: npm ci + lint + vitest + SonarCloud
-  # qualitygate.wait=true en ambos → fail-fast si rechaza
+  # Backend: mvn clean test + SonarCloud qualitygate.wait=true
+  # Frontend: npm ci + lint + vitest + coverage
   # ═══════════════════════════════════════════════════════
 
   test-quality:
@@ -40,8 +39,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      # ── Backend ──────────────────────────────────────
-
       - name: Set up JDK ${{ env.JAVA_VERSION }}
         uses: actions/setup-java@v5
         with:
@@ -49,7 +46,7 @@ jobs:
           distribution: temurin
           cache: maven
 
-      - name: Backend — Maven clean test (unit tests)
+      - name: Backend — Maven clean test
         run: mvn clean test -B
 
       - name: Backend — SonarCloud analysis (qualitygate.wait=true)
@@ -67,8 +64,6 @@ jobs:
             -Dsonar.token="${{ secrets.SONAR_TOKEN }}"
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-
-      # ── Frontend ─────────────────────────────────────
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -89,10 +84,6 @@ jobs:
         run: npm test -- --coverage --reporter=verbose
         working-directory: frontend
 
-      # SonarCloud: solo backend. Frontend: tests + lint + coverage report.
-
-      # ── Artifacts ────────────────────────────────────
-
       - name: Upload backend coverage
         if: always()
         uses: actions/upload-artifact@v4
@@ -108,11 +99,9 @@ jobs:
           path: frontend/coverage
 
   # ═══════════════════════════════════════════════════════
-  # FASE 2: Security Scan — Snyk (IE6 FAIL-FAST)
-  # Analisis informativo de dependencias. No bloquea el pipeline.
-  # Evidencia de bloqueo HIGH capturada en run anterior para IE6.
-  # SonarCloud Quality Gate es el mecanismo fail-fast principal.
-  # Decision documentada en README_EVALUACION.md seccion 1.5.
+  # FASE 2: Security Scan — Snyk
+  # Analisis de dependencias. SonarCloud es el fail-fast.
+  # Evidencia IE6 de bloqueo HIGH capturada en runs anteriores.
   # ═══════════════════════════════════════════════════════
 
   security-scan:
@@ -136,8 +125,7 @@ jobs:
       - name: Install Snyk CLI
         run: npm install -g snyk
 
-      - name: Snyk — Vulnerability scan (CRITICAL threshold)
-        id: snyk
+      - name: Snyk — Vulnerability scan
         run: |
           snyk test \
             --all-projects \
@@ -147,24 +135,74 @@ jobs:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
 
   # ═══════════════════════════════════════════════════════
-  # FASE 3: Deploy to EC2 (IE2)
-  # SSH → git pull → docker compose up -d --build
-  # La EC2 construye imagenes localmente (no requiere ECR)
+  # FASE 3: Build & Push to ECR
+  # Construye imagenes Docker y las publica en AWS ECR
   # ═══════════════════════════════════════════════════════
 
-  deploy-ec2:
-    name: Deploy to EC2 (Docker Compose)
+  build-push:
+    name: Build & Push to ECR
     needs: security-scan
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name != 'pull_request'
     steps:
       - uses: actions/checkout@v4
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build & push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BACKEND }}:latest
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BACKEND }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND }}:latest
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ═══════════════════════════════════════════════════════
+  # FASE 4: Deploy to EC2 (IE2)
+  # SSH → git pull → docker compose up -d --build → smoke tests
+  # ═══════════════════════════════════════════════════════
+
+  deploy-ec2:
+    name: Deploy to EC2 (Docker Compose)
+    needs: build-push
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Get EC2 public IP
         id: ec2-ip
@@ -175,7 +213,7 @@ jobs:
             --query 'Reservations[0].Instances[0].PublicIpAddress' \
             --output text)
           if [ -z "$IP" ] || [ "$IP" = "None" ]; then
-            echo "::error::No EC2 instance found with tag Name=greeting-ec2-ep3"
+            echo "::error::No EC2 instance found"
             exit 1
           fi
           echo "ip=$IP" >> "$GITHUB_OUTPUT"
@@ -206,7 +244,7 @@ jobs:
             echo "=== Smoke tests ==="
             curl -fsS -o /dev/null -w "Frontend: HTTP %{http_code}\n" http://localhost/health
             curl -fsS http://localhost:8080/actuator/health
-            curl -fsS -X POST "http://localhost/api/v1/greetings?name=CI-CD-Smoke" | grep -q "Hola DevOps V4" && echo "API OK"
+            curl -fsS -X POST "http://localhost/api/v1/greetings?name=CI-CD-Deploy" | grep -q "Hola DevOps V4" && echo "API OK"
 
       - name: Publish deploy metrics to CloudWatch
         if: always()
