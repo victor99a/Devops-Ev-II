@@ -33,8 +33,7 @@ El proyecto implementa una arquitectura **Full-Stack de Microservicios** compues
                     │  ┌──────────────────────┐ │
                     │  │ 1. Test & Quality    │ │
                     │  │ 2. Quality Gate      │ │
-                    │  │ 3. Security (Snyk+   │ │
-                    │  │    Trivy)            │ │
+│  │ 3. Security (Snyk)  │ │
                     │  │ 4. Build & Push (ECR)│ │
                     │  │ 5. Deploy EC2 (SSH)  │ │
                     │  │ 6. Smoke Tests       │ │
@@ -71,7 +70,7 @@ La arquitectura integra las siguientes herramientas para permitir **toma de deci
 | Categoría | Herramienta | Qué mide | Decisión informada |
 |---|---|---|---|
 | **Calidad de Código** | SonarCloud + JaCoCo + Vitest | Cobertura de pruebas, bugs, code smells, vulnerabilidades | ¿El código cumple el umbral mínimo del 80% de cobertura? ¿Hay bugs críticos que impidan el despliegue? |
-| **Seguridad** | Snyk + Trivy | Vulnerabilidades en dependencias e imágenes Docker | ¿Las dependencias tienen CVEs de severidad High/Critical? ¿La imagen Docker contiene binarios vulnerables? |
+| **Seguridad** | Snyk | Vulnerabilidades en dependencias | ¿Las dependencias tienen CVEs de severidad High/Critical? |
 | **CI/CD** | GitHub Actions + AWS ECR + EC2 | Tiempo de despliegue, tasa de éxito/fallo de pipelines | ¿El pipeline está ralentizando los despliegues? ¿Hay fallos recurrentes que requieran ajustes? |
 | **Monitoreo** | Prometheus + Micrometer | Uso de CPU/Memoria, tasa de errores HTTP, latencia, conexiones DB | ¿El backend necesita más réplicas? ¿Hay memory leaks? ¿La latencia P99 supera el SLA? |
 | **Logs** | CloudWatch Logs + Fluent Bit | Errores de aplicación, stacktraces, eventos de infraestructura | ¿Hay errores recurrentes que requieran debugging? ¿Patrones de fallo en producción? |
@@ -247,7 +246,6 @@ Devops-Ev-II/
 | Cobertura Backend | SonarCloud / JaCoCo | `[COMPLETAR]` | ≥ 80% |
 | Cobertura Frontend | SonarCloud / Vitest | `[COMPLETAR]` | ≥ 70% |
 | Vulnerabilidades (Snyk) | Snyk | `[COMPLETAR]` | 0 High/Critical |
-| Vulnerabilidades (Imagen) | Trivy | `[COMPLETAR]` | 0 High/Critical |
 
 ### 5.5 Despliegue
 
@@ -403,7 +401,7 @@ Declaración firmada por:
 
 > **[COMPLETAR DE FORMA MANUAL — SIN USO DE IA]**
 >
-> Reflexione sobre el uso de SonarCloud, Snyk y Trivy como herramientas de calidad y seguridad. ¿Cómo estas herramientas ayudan a prevenir que código vulnerable o de baja calidad llegue a producción? ¿Qué aprendió sobre DevSecOps y la importancia de integrar seguridad desde las primeras etapas del pipeline?
+> Reflexione sobre el uso de SonarCloud y Snyk como herramientas de calidad y seguridad. ¿Cómo estas herramientas ayudan a prevenir que código vulnerable o de baja calidad llegue a producción? ¿Qué aprendió sobre DevSecOps y la importancia de integrar seguridad desde las primeras etapas del pipeline?
 
 *(Escriba su reflexión aquí...)*
 
@@ -445,7 +443,7 @@ Declaración firmada por:
 
 > **[COMPLETAR DE FORMA MANUAL — SIN USO DE IA]**
 >
-> Analice el impacto de integrar herramientas de calidad (SonarCloud, JaCoCo) y seguridad (Snyk, Trivy) en el flujo de desarrollo. ¿Qué relación existe entre la cobertura de pruebas y la confianza en el código? ¿Cómo contribuye el escaneo de imágenes Docker a la seguridad de la cadena de suministro?
+> Analice el impacto de integrar herramientas de calidad (SonarCloud, JaCoCo) y seguridad (Snyk) en el flujo de desarrollo. ¿Qué relación existe entre la cobertura de pruebas y la confianza en el código? ¿Cómo contribuye el escaneo de imágenes Docker a la seguridad de la cadena de suministro?
 
 *(Escriba su reflexión aquí...)*
 

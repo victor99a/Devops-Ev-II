@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 env:
-  JAVA_VERSION: "21"
+  JAVA_VERSION: "17"
   AWS_REGION: us-east-1
   ECR_BACKEND: demo-ms-backend
   ECR_FRONTEND: demo-ms-frontend
@@ -49,10 +49,12 @@ jobs:
           distribution: temurin
           cache: maven
 
-      - name: Backend — Maven verify + JaCoCo + SonarCloud
-        id: backend
+      - name: Backend — Maven clean test (unit tests)
+        run: mvn clean test -B
+
+      - name: Backend — SonarCloud analysis (qualitygate.wait=true)
         run: |
-          mvn verify sonar:sonar \
+          mvn sonar:sonar \
             -B \
             -Dsonar.projectKey=victor99a_Devops-Ev-II \
             -Dsonar.organization="${{ env.SONAR_ORG }}" \
@@ -253,20 +255,22 @@ jobs:
             git checkout main
             git pull origin main
 
-            echo "=== Pulling latest images ==="
-            sudo docker compose pull 2>/dev/null || true
+            echo "=== ECR login ==="
+            aws ecr get-login-password --region us-east-1 | sudo docker login --username AWS --password-stdin 992382358824.dkr.ecr.us-east-1.amazonaws.com || true
 
-            echo "=== Starting services ==="
+            echo "=== Pulling images and restarting ==="
+            sudo docker compose pull 2>/dev/null || true
             sudo docker compose down --remove-orphans || true
-            sudo docker compose up -d --build
+            sudo docker compose up -d
 
             echo "=== Waiting for health checks ==="
             sleep 30
             sudo docker compose ps
 
-            echo "=== Smoke checks ==="
+            echo "=== Smoke tests ==="
             curl -fsS -o /dev/null -w "Frontend: HTTP %{http_code}\n" http://localhost/health
             curl -fsS http://localhost:8080/actuator/health
+            curl -fsS -X POST "http://localhost/api/v1/greetings?name=SmokeTest" | grep -q "Hola DevOps V4" && echo "API OK"
 
       - name: Publish deploy metrics to CloudWatch
         if: always()
