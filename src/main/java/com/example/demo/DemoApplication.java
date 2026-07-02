@@ -4,7 +4,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-// Trigger pipeline EP3 - Validando Fail-Fast y despliegue automatizado EC2
+// Trigger pipeline EP3 - Validacion completa 4 fases con AWS Secrets configurados
 
 public class DemoApplication {
 
